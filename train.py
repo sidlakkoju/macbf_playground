@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-
+import os
 import sys
 
 # At the beginning of the script, add:
@@ -11,19 +11,19 @@ print(f"Using device: {device}")
 
 # Configuration parameters (same as before)
 class Config:
-    TIME_STEP = 0.02
-    TRAIN_STEPS = 20000
-    DISPLAY_STEPS = 100
-    INNER_LOOPS = 10
-    LEARNING_RATE = 0.001
-    WEIGHT_DECAY = 1e-4
+    TIME_STEP = 1e-1
+    TRAIN_STEPS = 70000
+    DISPLAY_STEPS = 200
+    INNER_LOOPS = 50
+    LEARNING_RATE = 1e-4
+    WEIGHT_DECAY = 1e-8
     ALPHA_CBF = 1.0
-    DIST_MIN_THRES = 0.1
-    TIME_TO_COLLISION = 3.0
+    DIST_MIN_THRES = 0.07
+    TIME_TO_COLLISION = 2.0
     OBS_RADIUS = 1.0
-    ADD_NOISE_PROB = 0.1
-    NOISE_SCALE = 0.1
-    TOP_K = 5
+    ADD_NOISE_PROB = 0.0
+    NOISE_SCALE = 0.3
+    TOP_K = 12
 
 config = Config()
 
@@ -165,6 +165,12 @@ def dynamics(s, a):
     dsdt = torch.cat([s[:, 2:], a], dim=1)
     return dsdt
 
+# Save the model checkpoints
+def save_model(model, model_name, step):
+    if not os.path.exists('checkpoints'):
+        os.makedirs('checkpoints')
+    torch.save(model.state_dict(), f'checkpoints/{model_name}_step_{step}.pth')
+
 def train(num_agents):
     cbf_net = CBFNetwork().to(device)
     action_net = ActionNetwork().to(device)
@@ -194,8 +200,9 @@ def train(num_agents):
 
         if step % config.DISPLAY_STEPS == 0:
             print(f"Step: {step}, Loss: {loss.item():.4f}")
-
+            save_model(cbf_net, "cbf_net", step)
+            save_model(action_net, "action_net", step)
 
 if __name__ == "__main__":
-    num_agents = 10  # Example number of agents
+    num_agents = 32  
     train(num_agents)
