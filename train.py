@@ -3,31 +3,15 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import os
+import config
 import sys
 
 # At the beginning of the script, add:
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-# Configuration parameters (same as before)
-class Config:
-    TIME_STEP = 1e-1
-    TRAIN_STEPS = 70000
-    DISPLAY_STEPS = 200
-    INNER_LOOPS = 50
-    LEARNING_RATE = 1e-4
-    WEIGHT_DECAY = 1e-8
-    ALPHA_CBF = 1.0
-    DIST_MIN_THRES = 0.07
-    TIME_TO_COLLISION = 2.0
-    OBS_RADIUS = 1.0
-    ADD_NOISE_PROB = 0.0
-    NOISE_SCALE = 0.3
-    TOP_K = 12
 
-config = Config()
-
-# Data generation function (same as before)
+# Data generation function (same as before), Validate
 def generate_data(num_agents, dist_min_thres):
     side_length = np.sqrt(max(1.0, num_agents / 8.0))
     states = np.zeros((num_agents, 4), dtype=np.float32)
@@ -52,7 +36,7 @@ def generate_data(num_agents, dist_min_thres):
         i += 1
     return states, goals
 
-# Control Barrier Function (CBF) Network
+# Control Barrier Function (CBF) Network, Validate
 class CBFNetwork(nn.Module):
     def __init__(self):
         super(CBFNetwork, self).__init__()
@@ -70,7 +54,7 @@ class CBFNetwork(nn.Module):
         h = h.permute(0, 2, 1)  # [batch, neighbors, 1]
         return h
 
-# Action Network
+# Action Network, Validate
 class ActionNetwork(nn.Module):
     def __init__(self):
         super(ActionNetwork, self).__init__()
@@ -102,7 +86,7 @@ class ActionNetwork(nn.Module):
         a = torch.cat([a_x, a_y], dim=1)
         return a
 
-# compute_neighbor_features function
+# compute_neighbor_features function, validate
 def compute_neighbor_features(s, r, k, include_d_norm=False, indices=None):
     num_agents = s.size(0)
     s_diff = s.unsqueeze(1) - s.unsqueeze(0)  # [num_agents, num_agents, 4]
@@ -118,18 +102,38 @@ def compute_neighbor_features(s, r, k, include_d_norm=False, indices=None):
         neighbor_features = torch.cat([neighbor_features, d_norm], dim=2)
     return neighbor_features, indices
 
-# ttc_dangerous_mask function
+
+# Validate
 def ttc_dangerous_mask(s, r, ttc, indices):
     num_agents = s.size(0)
     s_diff = s.unsqueeze(1) - s.unsqueeze(0)  # [num_agents, num_agents, 4]
-    s_diff = s_diff[torch.arange(num_agents).unsqueeze(1), indices]  # Select top k neighbors
-    x, y, vx, vy = s_diff.split(1, dim=2)
+    s_diff = s_diff[torch.arange(num_agents).unsqueeze(1), indices]  # [num_agents, k, 4]
+    
+    x, y, vx, vy = s_diff[..., 0], s_diff[..., 1], s_diff[..., 2], s_diff[..., 3]
+    
+    # Avoid self-interactions by setting self-distances to a large value
+    eye = torch.eye(num_agents, device=s.device)
+    eye = eye[torch.arange(num_agents).unsqueeze(1), indices]
+    x = x + eye
+    y = y + eye
+
     alpha = vx ** 2 + vy ** 2
     beta = 2 * (x * vx + y * vy)
     gamma = x ** 2 + y ** 2 - r ** 2
+
     discriminant = beta ** 2 - 4 * alpha * gamma
-    mask = (gamma < 0) | ((discriminant > 0) & (gamma > 0) & (beta < 0))
-    return mask.squeeze(2)  # Shape: [num_agents, k]
+    dist_dangerous = gamma < 0
+
+    has_two_positive_roots = (discriminant > 0) & (gamma > 0) & (beta < 0)
+    root1 = (-beta - torch.sqrt(discriminant)) / (2 * alpha)
+    root2 = (-beta + torch.sqrt(discriminant)) / (2 * alpha)
+    root_less_than_ttc = (root1 > 0) & (root1 < ttc) | (root2 > 0) & (root2 < ttc)
+    has_root_less_than_ttc = has_two_positive_roots & root_less_than_ttc
+
+    ttc_dangerous = dist_dangerous | has_root_less_than_ttc
+
+    return ttc_dangerous  # Shape: [num_agents, k]
+
 
 # barrier_loss function
 def barrier_loss(h, s, r, ttc, indices):
@@ -161,6 +165,7 @@ def action_loss(a, s, g):
     loss = torch.mean(torch.abs(torch.norm(a, dim=1) - torch.norm(action_ref, dim=1)))
     return loss
 
+# validate
 def dynamics(s, a):
     dsdt = torch.cat([s[:, 2:], a], dim=1)
     return dsdt
@@ -200,9 +205,11 @@ def train(num_agents):
 
         if step % config.DISPLAY_STEPS == 0:
             print(f"Step: {step}, Loss: {loss.item():.4f}")
-            save_model(cbf_net, "cbf_net", step)
-            save_model(action_net, "action_net", step)
+        
+        if (step + 1) % config.CHECKPOINT_STEPS == 0:
+            save_model(cbf_net, "cbf_net", step + 1)
+            save_model(action_net, "action_net", step + 1)
 
 if __name__ == "__main__":
-    num_agents = 32  
+    num_agents = 32
     train(num_agents)
