@@ -8,6 +8,7 @@ from core import *
 import sys
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("mps")
 print(f"Using device: {device}")
 
 # Save the model checkpoints
@@ -15,6 +16,7 @@ def save_model(model, model_name, step):
     if not os.path.exists('checkpoints'):
         os.makedirs('checkpoints')
     torch.save(model.state_dict(), f'checkpoints/{model_name}_step_{step}.pth')
+
 
 def train(num_agents):
     cbf_net = CBFNetwork().to(device)
@@ -34,10 +36,11 @@ def train(num_agents):
             neighbor_features_action, _ = compute_neighbor_features(
                 s, config.DIST_MIN_THRES, config.TOP_K, include_d_norm=False, indices=indices)
             a = action_net(s, g, neighbor_features_action)
-            loss_b = barrier_loss(h, s, config.DIST_MIN_THRES, config.TIME_TO_COLLISION, indices)
-            loss_d = derivative_loss(h, s, a, cbf_net, config.ALPHA_CBF, indices)
-            loss_a = action_loss(a, s, g)
-            loss = 10 * (2 * loss_b + 2 * loss_d + 0.01 * loss_a)
+
+            loss_dang, loss_safe, acc_dang, acc_safe = barrier_loss(h, s, config.DIST_MIN_THRES, config.TIME_TO_COLLISION, indices)
+            loss_dang_deriv, loss_safe_deriv, acc_dang_deriv, acc_safe_deriv = derivative_loss(h, s, a, cbf_net, config.ALPHA_CBF, indices)
+            loss_action = action_loss(a, s, g)
+            loss = 10 * (2*loss_dang + loss_safe + 2*loss_dang_deriv + loss_safe_deriv + 0.01*loss_action)
             loss.backward()
             optimizer.step()
             with torch.no_grad():

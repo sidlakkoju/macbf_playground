@@ -120,7 +120,7 @@ class ActionNetwork(nn.Module):
 def compute_neighbor_features(s, r, k, include_d_norm=False, indices=None):
     num_agents = s.size(0)
     s_diff = s.unsqueeze(1) - s.unsqueeze(0)  # [num_agents, num_agents, 4]
-    distances = torch.norm(s_diff[:, :, :2], dim=2) + 1e-6  # [num_agents, num_agents]
+    distances = torch.norm(s_diff[:, :, :2], dim=2) + 1e-4  # [num_agents, num_agents]
     if indices is None:
         _, indices = torch.topk(-distances, k=k, dim=1)
     neighbor_features = s_diff[torch.arange(num_agents).unsqueeze(1), indices]
@@ -144,15 +144,14 @@ def ttc_dangerous_mask(s, r, ttc, indices):
     num_agents = s.size(0)
     s_diff = s.unsqueeze(1) - s.unsqueeze(0)  # [num_agents, num_agents, 4]
     s_diff = s_diff[torch.arange(num_agents).unsqueeze(1), indices]  # [num_agents, k, 4]
-    x, y, vx, vy = s_diff[..., 0], s_diff[..., 1], s_diff[..., 2], s_diff[..., 3]
+    x, y, vx, vy = s_diff[..., 0], s_diff[..., 1], s_diff[..., 2], s_diff[..., 3]   # [num_agents, k]
 
     # Avoid self-interactions by setting self-distances to a large value
     eye = torch.eye(num_agents, device=s.device)
     eye = eye[torch.arange(num_agents).unsqueeze(1), indices]
     x = x + eye
     y = y + eye
-
-    alpha = vx ** 2 + vy ** 2 + 1e-6
+    alpha = vx ** 2 + vy ** 2
     beta = 2 * (x * vx + y * vy)
     gamma = x ** 2 + y ** 2 - r ** 2
 
@@ -160,7 +159,7 @@ def ttc_dangerous_mask(s, r, ttc, indices):
     dist_dangerous = gamma < 0
 
     has_two_positive_roots = (discriminant > 0) & (gamma > 0) & (beta < 0)
-    sqrt_discriminant = torch.sqrt(discriminant + 1e-6)
+    sqrt_discriminant = torch.sqrt(discriminant)
     root1 = (-beta - sqrt_discriminant) / (2 * alpha)
     root2 = (-beta + sqrt_discriminant) / (2 * alpha)
     root_less_than_ttc = ((root1 > 0) & (root1 < ttc)) | ((root2 > 0) & (root2 < ttc))
@@ -170,7 +169,7 @@ def ttc_dangerous_mask(s, r, ttc, indices):
     return ttc_dangerous  # Shape: [num_agents, k]
 
 
-# barrier_loss function
+
 def barrier_loss(h, s, r, ttc, indices):
     mask = ttc_dangerous_mask(s, r, ttc, indices)
     h = h.squeeze(2)  # If h has shape [num_agents, k, 1]
@@ -180,69 +179,35 @@ def barrier_loss(h, s, r, ttc, indices):
     safe_h = h[~mask]
     loss_dang = torch.mean(torch.relu(dang_h + 1e-3)) if dang_h.numel() > 0 else 0
     loss_safe = torch.mean(torch.relu(-safe_h)) if safe_h.numel() > 0 else 0
-    return loss_dang + loss_safe
+    acc_dang = torch.mean((dang_h <= 0).float()) if dang_h.numel() > 0 else -1.0
+    acc_safe = torch.mean((safe_h > 0).float()) if safe_h.numel() > 0 else -1.0
+    return loss_dang, loss_safe, acc_dang, acc_safe
 
-# derivative_loss function
+
 def derivative_loss(h, s, a, cbf_net, alpha, indices):
     s_next = s + dynamics(s, a) * config.TIME_STEP
     neighbor_features, _ = compute_neighbor_features(
         s_next, config.DIST_MIN_THRES, config.TOP_K, include_d_norm=True, indices=indices)
     h_next = cbf_net(neighbor_features)
     deriv = (h_next - h) + config.TIME_STEP * alpha * h
-    loss_deriv = torch.mean(torch.relu(-deriv.view(-1) + 1e-3))
-    return loss_deriv
+    deriv = deriv.view(-1)
+    dang_mask = ttc_dangerous_mask(s, config.DIST_MIN_THRES, config.TIME_TO_COLLISION, indices)
+    dang_mask = dang_mask.view(-1)
+    dang_deriv = deriv[dang_mask]
+    safe_deriv = deriv[~dang_mask]
+    loss_dang_deriv = torch.mean(torch.relu(-dang_deriv + 1e-3)) if dang_deriv.numel() > 0 else 0
+    loss_safe_deriv = torch.mean(torch.relu(-safe_deriv)) if safe_deriv.numel() > 0 else 0
+    acc_dang_deriv = torch.mean((dang_deriv >= 0).float()) if dang_deriv.numel() > 0 else -1.0
+    acc_safe_deriv = torch.mean((safe_deriv >= 0).float()) if safe_deriv.numel() > 0 else -1.0
+    return loss_dang_deriv, loss_safe_deriv, acc_dang_deriv, acc_safe_deriv
 
 
 def action_loss(a, s, g):
     state_gain = torch.tensor(np.eye(2, 4) + np.eye(2, 4, k=2) * np.sqrt(3), dtype=torch.float32).to(s.device)
     s_ref = torch.cat([s[:, :2] - g, s[:, 2:]], dim=1)
     action_ref = s_ref @ state_gain.T
-    loss = torch.mean(torch.abs(torch.norm(a, dim=1) - torch.norm(action_ref, dim=1)))
+    action_ref_norm = torch.sum(action_ref ** 2, dim=1)
+    action_net_norm = torch.sum(a ** 2, dim=1)
+    norm_diff = torch.abs(action_net_norm - action_ref_norm)
+    loss = torch.mean(norm_diff)
     return loss
-
-
-# # Different
-# def barrier_loss(h, s, r, ttc, indices):
-#     mask = ttc_dangerous_mask(s, r, ttc, indices)
-#     h = h.squeeze(2)  # [num_agents, k]
-#     h_flat = h.view(-1)
-#     mask_flat = mask.view(-1)
-#     dang_h = h_flat[mask_flat]
-#     safe_h = h_flat[~mask_flat]
-#     num_dang = dang_h.numel()
-#     num_safe = safe_h.numel()
-#     loss_dang = torch.sum(torch.relu(dang_h + 1e-3)) / (1e-5 + num_dang)
-#     loss_safe = torch.sum(torch.relu(-safe_h)) / (1e-5 + num_safe)
-#     acc_dang = torch.sum((dang_h <= 0).float()) / (1e-5 + num_dang)
-#     acc_safe = torch.sum((safe_h > 0).float()) / (1e-5 + num_safe)
-#     return loss_dang, loss_safe, acc_dang.item(), acc_safe.item()
-
-
-# def derivative_loss(h, s, a, cbf_net, alpha, indices):
-#     dsdt = dynamics(s, a)
-#     s_next = s + dsdt * config.TIME_STEP
-#     neighbor_features, _ = compute_neighbor_features(
-#         s_next, config.DIST_MIN_THRES, config.TOP_K, include_d_norm=True, indices=indices)
-#     h_next = cbf_net(neighbor_features)
-#     deriv = h_next - h + config.TIME_STEP * alpha * h
-#     deriv_flat = deriv.view(-1)
-#     mask = ttc_dangerous_mask(s, config.DIST_MIN_THRES, config.TIME_TO_COLLISION, indices)
-#     mask_flat = mask.view(-1)
-#     dang_deriv = deriv_flat[mask_flat]
-#     safe_deriv = deriv_flat[~mask_flat]
-#     num_dang = dang_deriv.numel()
-#     num_safe = safe_deriv.numel()
-#     loss_dang_deriv = torch.sum(torch.relu(-dang_deriv + 1e-3)) / (1e-5 + num_dang)
-#     loss_safe_deriv = torch.sum(torch.relu(-safe_deriv)) / (1e-5 + num_safe)
-#     acc_dang_deriv = torch.sum((dang_deriv >= 0).float()) / (1e-5 + num_dang)
-#     acc_safe_deriv = torch.sum((safe_deriv >= 0).float()) / (1e-5 + num_safe)
-#     return loss_dang_deriv, loss_safe_deriv, acc_dang_deriv.item(), acc_safe_deriv.item()
-
-# # Identical to train.py
-# def action_loss(a, s, g):
-#     state_gain = torch.tensor(
-#         np.eye(2, 4) + np.eye(2, 4, k=2) * np.sqrt(3), dtype=torch.float32).to(s.device)
-#     s_ref = torch.cat([s[:, :2] - g, s[:, 2:]], dim=1)
-#     action_ref = s_ref @ state_gain.T
-#     loss = torch.mean(torch.abs(torch.norm(a, dim=1) - torch.norm(action_ref, dim=1)))
-#     return loss
