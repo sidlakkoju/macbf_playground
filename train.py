@@ -22,10 +22,27 @@ def train(num_agents):
     cbf_net = CBFNetwork().to(device)
     action_net = ActionNetwork().to(device)
     optimizer = optim.Adam(list(cbf_net.parameters()) + list(action_net.parameters()), lr=config.LEARNING_RATE)
+
+
+    # Initialize state_gain once
+    sqrt_3 = torch.sqrt(torch.tensor(3.0, device=device))
+    state_gain = torch.tensor(
+        [[1.0, 0.0, sqrt_3.item(), 0.0],
+        [0.0, 1.0, 0.0, sqrt_3.item()]],
+        dtype=torch.float32,
+        device=device
+    )
+
+
+
+
     for step in range(config.TRAIN_STEPS):
-        s_np, g_np = generate_data(num_agents, config.DIST_MIN_THRES)
-        s = torch.tensor(s_np, dtype=torch.float32).to(device)
-        g = torch.tensor(g_np, dtype=torch.float32).to(device)
+        # s_np, g_np = generate_data(num_agents, config.DIST_MIN_THRES)
+        s, g = generate_data(num_agents, config.DIST_MIN_THRES, device)
+
+        # s = torch.tensor(s_np, dtype=torch.float32).to(device)
+        # g = torch.tensor(g_np, dtype=torch.float32).to(device)
+
         for _ in range(config.INNER_LOOPS):
             optimizer.zero_grad()
             # For CBF Network
@@ -39,7 +56,8 @@ def train(num_agents):
 
             loss_dang, loss_safe, acc_dang, acc_safe = barrier_loss(h, s, config.DIST_MIN_THRES, config.TIME_TO_COLLISION, indices)
             loss_dang_deriv, loss_safe_deriv, acc_dang_deriv, acc_safe_deriv = derivative_loss(h, s, a, cbf_net, config.ALPHA_CBF, indices)
-            loss_action = action_loss(a, s, g)
+            # loss_action = action_loss(a, s, g)
+            loss_action = action_loss(a, s, g, state_gain)
             loss = 10 * (2*loss_dang + loss_safe + 2*loss_dang_deriv + loss_safe_deriv + 0.01*loss_action)
             loss.backward()
             optimizer.step()

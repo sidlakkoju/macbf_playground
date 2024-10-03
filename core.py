@@ -39,30 +39,55 @@ def generate_obstacle_rectangle(center, sides, num=12):
     rectangle = rectangle + np.array(center)
     return rectangle
 
-# Identical to train.py
-def generate_data(num_agents, dist_min_thres):
-    side_length = np.sqrt(max(1.0, num_agents / 8.0))
-    states = np.zeros((num_agents, 4), dtype=np.float32)
-    goals = np.zeros((num_agents, 2), dtype=np.float32)
+# # Identical to train.py
+# def generate_data(num_agents, dist_min_thres):
+#     side_length = np.sqrt(max(1.0, num_agents / 8.0))
+#     states = np.zeros((num_agents, 4), dtype=np.float32)
+#     goals = np.zeros((num_agents, 2), dtype=np.float32)
+#     i = 0
+#     while i < num_agents:
+#         candidate = np.random.uniform(0, side_length, size=(2,))
+#         if i > 0:
+#             dist_min = np.linalg.norm(states[:i, :2] - candidate, axis=1).min()
+#             if dist_min <= dist_min_thres:
+#                 continue
+#         states[i, :2] = candidate
+#         i += 1
+#     i = 0
+#     while i < num_agents:
+#         candidate = np.random.uniform(-0.5, 0.5, size=(2,)) + states[i, :2]
+#         if i > 0:
+#             dist_min = np.linalg.norm(goals[:i] - candidate, axis=1).min()
+#             if dist_min <= dist_min_thres:
+#                 continue
+#         goals[i] = candidate
+#         i += 1
+#     return states, goals
+
+def generate_data(num_agents, dist_min_thres, device):
+    side_length = torch.sqrt(torch.tensor(max(1.0, num_agents / 8.0), device=device))
+    states = torch.zeros((num_agents, 4), dtype=torch.float32, device=device)
+    goals = torch.zeros((num_agents, 2), dtype=torch.float32, device=device)
     i = 0
     while i < num_agents:
-        candidate = np.random.uniform(0, side_length, size=(2,))
+        candidate = torch.rand(2, device=device) * side_length
         if i > 0:
-            dist_min = np.linalg.norm(states[:i, :2] - candidate, axis=1).min()
+            dist_min = torch.norm(states[:i, :2] - candidate, dim=1).min()
             if dist_min <= dist_min_thres:
                 continue
         states[i, :2] = candidate
         i += 1
     i = 0
     while i < num_agents:
-        candidate = np.random.uniform(-0.5, 0.5, size=(2,)) + states[i, :2]
+        candidate = (torch.rand(2, device=device) - 0.5) + states[i, :2]
         if i > 0:
-            dist_min = np.linalg.norm(goals[:i] - candidate, axis=1).min()
+            dist_min = torch.norm(goals[:i] - candidate, dim=1).min()
             if dist_min <= dist_min_thres:
                 continue
         goals[i] = candidate
         i += 1
     return states, goals
+
 
 # Identical to train.py
 class CBFNetwork(nn.Module):
@@ -202,8 +227,17 @@ def derivative_loss(h, s, a, cbf_net, alpha, indices):
     return loss_dang_deriv, loss_safe_deriv, acc_dang_deriv, acc_safe_deriv
 
 
-def action_loss(a, s, g):
-    state_gain = torch.tensor(np.eye(2, 4) + np.eye(2, 4, k=2) * np.sqrt(3), dtype=torch.float32).to(s.device)
+# def action_loss(a, s, g):
+#     state_gain = torch.tensor(np.eye(2, 4) + np.eye(2, 4, k=2) * np.sqrt(3), dtype=torch.float32).to(s.device)
+#     s_ref = torch.cat([s[:, :2] - g, s[:, 2:]], dim=1)
+#     action_ref = s_ref @ state_gain.T
+#     action_ref_norm = torch.sum(action_ref ** 2, dim=1)
+#     action_net_norm = torch.sum(a ** 2, dim=1)
+#     norm_diff = torch.abs(action_net_norm - action_ref_norm)
+#     loss = torch.mean(norm_diff)
+#     return loss
+
+def action_loss(a, s, g, state_gain):
     s_ref = torch.cat([s[:, :2] - g, s[:, 2:]], dim=1)
     action_ref = s_ref @ state_gain.T
     action_ref_norm = torch.sum(action_ref ** 2, dim=1)
@@ -211,3 +245,4 @@ def action_loss(a, s, g):
     norm_diff = torch.abs(action_net_norm - action_ref_norm)
     loss = torch.mean(norm_diff)
     return loss
+
