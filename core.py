@@ -40,29 +40,29 @@ def generate_obstacle_rectangle(center, sides, num=12):
     return rectangle
 
 # # Identical to train.py
-# def generate_data(num_agents, dist_min_thres):
-#     side_length = np.sqrt(max(1.0, num_agents / 8.0))
-#     states = np.zeros((num_agents, 4), dtype=np.float32)
-#     goals = np.zeros((num_agents, 2), dtype=np.float32)
-#     i = 0
-#     while i < num_agents:
-#         candidate = np.random.uniform(0, side_length, size=(2,))
-#         if i > 0:
-#             dist_min = np.linalg.norm(states[:i, :2] - candidate, axis=1).min()
-#             if dist_min <= dist_min_thres:
-#                 continue
-#         states[i, :2] = candidate
-#         i += 1
-#     i = 0
-#     while i < num_agents:
-#         candidate = np.random.uniform(-0.5, 0.5, size=(2,)) + states[i, :2]
-#         if i > 0:
-#             dist_min = np.linalg.norm(goals[:i] - candidate, axis=1).min()
-#             if dist_min <= dist_min_thres:
-#                 continue
-#         goals[i] = candidate
-#         i += 1
-#     return states, goals
+def generate_data_np(num_agents, dist_min_thres):
+    side_length = np.sqrt(max(1.0, num_agents / 8.0))
+    states = np.zeros((num_agents, 4), dtype=np.float32)
+    goals = np.zeros((num_agents, 2), dtype=np.float32)
+    i = 0
+    while i < num_agents:
+        candidate = np.random.uniform(0, side_length, size=(2,))
+        if i > 0:
+            dist_min = np.linalg.norm(states[:i, :2] - candidate, axis=1).min()
+            if dist_min <= dist_min_thres:
+                continue
+        states[i, :2] = candidate
+        i += 1
+    i = 0
+    while i < num_agents:
+        candidate = np.random.uniform(-0.5, 0.5, size=(2,)) + states[i, :2]
+        if i > 0:
+            dist_min = np.linalg.norm(goals[:i] - candidate, axis=1).min()
+            if dist_min <= dist_min_thres:
+                continue
+        goals[i] = candidate
+        i += 1
+    return states, goals
 
 def generate_data(num_agents, dist_min_thres, device):
     side_length = torch.sqrt(torch.tensor(max(1.0, num_agents / 8.0), device=device))

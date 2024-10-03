@@ -46,8 +46,8 @@ def main():
     # cbf_net.load_state_dict(torch.load(os.path.join(args.model_path, 'cbf_net.pth')))
     # action_net.load_state_dict(torch.load(os.path.join(args.model_path, 'action_net.pth')))
     
-    cbf_net.load_state_dict(torch.load('checkpoints/cbf_net_step_1000.pth'))
-    action_net.load_state_dict(torch.load('checkpoints/action_net_step_1000.pth'))
+    # cbf_net.load_state_dict(torch.load('checkpoints/cbf_net_step_100.pth'))
+    # action_net.load_state_dict(torch.load('checkpoints/action_net_step_100.pth'))
 
     cbf_net.eval()
     action_net.eval()
@@ -75,7 +75,7 @@ def main():
         safety_info = []
         safety_info_baseline = []
 
-        s_np_ori, g_np_ori = core.generate_data(args.num_agents, config.DIST_MIN_THRES * 1.5)
+        s_np_ori, g_np_ori = core.generate_data_np(args.num_agents, config.DIST_MIN_THRES * 1.5)
         s_np, g_np = np.copy(s_np_ori), np.copy(g_np_ori)
         init_dist_errors.append(np.mean(np.linalg.norm(s_np[:, :2] - g_np, axis=1)))
 
