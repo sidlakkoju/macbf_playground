@@ -260,7 +260,6 @@ def compute_neighbor_features_with_wall_agents(s, wall_agents, r, k, include_d_n
     return neighbor_features, indices
 
 
-
 def ttc_dangerous_mask_obs(s, r, ttc, indices, neighbor_features):
     """
     s: agent states, shape [num_agents, 4]
@@ -352,7 +351,7 @@ def generate_social_mini_game_data():
 
     # Wall representation as static agents
     # We will create wall agents along x=wall_x, excluding the hole
-    wall_resolution = config.DIST_MIN_THRES * 2  # Distance between wall agents
+    wall_resolution = config.DIST_MIN_THRES  # Distance between wall agents
     wall_y_positions = np.arange(y_min, y_max + wall_resolution, wall_resolution)
     # Exclude positions within the hole
     wall_y_positions = wall_y_positions[(wall_y_positions < hole_y_min) | (wall_y_positions > hole_y_max)]
@@ -406,10 +405,11 @@ def plot_single_state_with_original(state, target, safety, original_state, agent
 
 
 def plot_single_state_with_wall_separate(agent_state, agent_goal, wall_state, wall_goal,
-                                         safety, original_state, agent_size=100):
+                                         safety, original_state, action=None, action_res=None, action_opt=None, agent_size=100):
     """
     Plot a single frame given agent states, agent goals, wall states, wall goals,
-    safety metrics, and an original state vector for consistent scaling.
+    safety metrics, and an original state vector for consistent scaling. 
+    Additionally, print action values on the plot with better spacing.
 
     Args:
         agent_state: np.array of shape (num_agents, 4)
@@ -418,6 +418,9 @@ def plot_single_state_with_wall_separate(agent_state, agent_goal, wall_state, wa
         wall_goal: np.array of shape (num_wall_agents, 2)
         safety: np.array of safety values of shape (num_agents,)
         original_state: The original agent states used for consistent scaling
+        action: np.array of shape (num_agents, 2) or None
+        action_res: np.array of shape (num_agents, 2) or None
+        action_opt: np.array of shape (num_agents, 2) or None
         agent_size: Size of the agents for visualization
     """
     # Combine agent and wall states for scaling
@@ -425,14 +428,10 @@ def plot_single_state_with_wall_separate(agent_state, agent_goal, wall_state, wa
 
     # vis_range = max(1, np.amax(np.abs(original_state[:, :2])))
     vis_range = np.float32(9.0)
-
-    # print(type(vis_range), vis_range.shape, vis_range)
-
-    # Normalize positions
     agent_state_vis = agent_state[:, :2] / vis_range
     agent_goal_vis = agent_goal / vis_range
     wall_state_vis = wall_state[:, :2] / vis_range
-    
+
     # Plot wall agents
     plt.scatter(wall_state_vis[:, 0], wall_state_vis[:, 1], color='grey',
                 s=agent_size, label='Wall', alpha=0.6)
@@ -451,9 +450,26 @@ def plot_single_state_with_wall_separate(agent_state, agent_goal, wall_state, wa
         plt.scatter(agent_state_vis[collision_indices, 0], agent_state_vis[collision_indices, 1],
                     color='red', s=agent_size, label='Collision', alpha=0.9)
 
+    # Plot actions if provided
+    if action is not None:
+        plt.quiver(agent_state_vis[:, 0], agent_state_vis[:, 1], action[:, 0], action[:, 1], color='green', scale=1, label='Action')
+        for i in range(agent_state_vis.shape[0]):
+            plt.text(agent_state_vis[i, 0] - 0.05, agent_state_vis[i, 1] + 0.05, f'{action[i]}', color='green', fontsize=8)
+
+    if action_res is not None:
+        plt.quiver(agent_state_vis[:, 0], agent_state_vis[:, 1], action_res[:, 0], action_res[:, 1], color='blue', scale=1, label='Action Res')
+        for i in range(agent_state_vis.shape[0]):
+            plt.text(agent_state_vis[i, 0] - 0.05, agent_state_vis[i, 1] - 0.05, f'{action_res[i]}', color='blue', fontsize=8)
+
+    if action_opt is not None:
+        plt.quiver(agent_state_vis[:, 0], agent_state_vis[:, 1], action_opt[:, 0], action_opt[:, 1], color='purple', scale=1, label='Action Opt')
+        for i in range(agent_state_vis.shape[0]):
+            plt.text(agent_state_vis[i, 0] - 0.05, agent_state_vis[i, 1] - 0.1, f'{action_opt[i]}', color='purple', fontsize=8)
+
     # Set plot limits and appearance
     plt.xlim(-0.5, 1.5)
     plt.ylim(-0.5, 1.5)
+    plt.legend()
 
     # Customize axis spines
     ax = plt.gca()
@@ -462,6 +478,8 @@ def plot_single_state_with_wall_separate(agent_state, agent_goal, wall_state, wa
         ax.spines[side].set_color('grey')
     ax.set_xticklabels([])
     ax.set_yticklabels([])
+
+    plt.show()
 
 
 '''

@@ -105,6 +105,10 @@ def main():
 
             # Refinement loop
             for _ in range(config.REFINE_LOOPS):
+
+                print("YOLO")
+
+
                 optimizer_res.zero_grad()
                 dsdt = core.dynamics(s, a + a_res)
                 s_next = s + dsdt * config.TIME_STEP

@@ -88,7 +88,7 @@ def main():
 
         # Generate data with obstacles
         s_np_ori, g_np_ori, obs_np, obs_g_np = generate_social_mini_game_data()
-        # s_np_ori, g_np_ori = np.expand_dims(s_np_ori[0], axis=0), np.expand_dims(g_np_ori[0], axis=0)
+        # s_np_ori, g_np_ori = np.expand_dims(s_np_ori[1], axis=0), np.expand_dims(g_np_ori[1], axis=0)
 
 
         s_np, g_np = np.copy(s_np_ori), np.copy(g_np_ori)
@@ -100,7 +100,12 @@ def main():
         obs = torch.tensor(obs_np, dtype=torch.float32, device=device)
 
         s_np_ours = []
+        a_np_ours = []
+        a_res_np_ours = []
+        a_opt_np_ours = []
+
         s_np_lqr = []
+        a_np_lqr = []
 
         safety_ours = []
         safety_lqr = []
@@ -146,7 +151,12 @@ def main():
             dsdt = dynamics(s, a_opt)
             s = s + dsdt * config.TIME_STEP
             s_np_current = s.cpu().numpy()
+            
             s_np_ours.append(s_np_current)
+            a_np_ours.append(a.cpu().numpy())
+            a_res_np_ours.append(a_res.detach().cpu().numpy())
+            a_opt_np_ours.append(a_opt.detach().cpu().numpy())
+
 
             # Update h for next iteration
             h = h_next.detach()
@@ -184,12 +194,11 @@ def main():
 
             s_np_lqr_current = s_lqr.cpu().numpy()
             s_np_lqr.append(s_np_lqr_current)
-
-            # ttc_mask = ttc_dangerous_mask_obs(s_lqr, obs, config.DIST_MIN_CHECK, config.TIME_TO_COLLISION_CHECK, indices, neighbor_features_cbf)
+            a_np_lqr.append(a_lqr.cpu().numpy())
 
             neighbor_features_cbf, indices = neighbor_features_cbf, indices = compute_neighbor_features_with_wall_agents(s_lqr, obs, config.DIST_MIN_THRES, config.TOP_K, include_d_norm=True)
 
-            ttc_mask = ttc_dangerous_mask_obs(s_lqr, config.DIST_MIN_CHECK,config.TIME_TO_COLLISION_CHECK, indices, neighbor_features_cbf, )
+            ttc_mask = ttc_dangerous_mask_obs(s_lqr, config.DIST_MIN_CHECK,config.TIME_TO_COLLISION_CHECK, indices, neighbor_features_cbf)
             safety_ratio = 1 - torch.mean(ttc_mask.float(), dim=1).cpu().numpy()
 
             safety_lqr.append(safety_ratio)
@@ -218,7 +227,9 @@ def main():
                 j_ours = min(j, len(s_np_ours) - 1)
                 state_ours = s_np_ours[j_ours]
                 safety_ours_current = np.squeeze(safety_ours[j_ours])
-                plot_single_state_with_wall_separate(state_ours, g_np, obs_np, obs_g_np, safety_ours_current, s_np_ori, agent_size=100)
+
+                # plot_single_state_with_wall_separate(state_ours, g_np, obs_np, obs_g_np, safety_ours_current, s_np_ori, action=a_np_ours[j_ours], agent_size=100)
+                plot_single_state_with_wall_separate(state_ours, g_np, obs_np, obs_g_np, safety_ours_current, s_np_ori, action=a_np_ours[j_ours], action_res=a_res_np_ours[j_ours], action_opt=a_opt_np_ours[j_ours], agent_size=100)
                 plt.title('Ours: Safety Rate = {:.3f}'.format(
                     np.mean(safety_ratios_epoch)), fontsize=14)
 
@@ -227,7 +238,7 @@ def main():
                 j_lqr = min(j, len(s_np_lqr) - 1)
                 state_lqr = s_np_lqr[j_lqr]
                 safety_lqr_current = np.squeeze(safety_lqr[j_lqr])
-                plot_single_state_with_wall_separate(state_lqr, g_np, obs_np, obs_g_np, safety_lqr_current, s_np_ori, agent_size=100)
+                plot_single_state_with_wall_separate(state_lqr, g_np, obs_np, obs_g_np, safety_lqr_current, s_np_ori, action_opt=a_np_lqr[j_lqr], agent_size=100)
                 plt.title('LQR: Safety Rate = {:.3f}'.format(
                     np.mean(safety_ratios_epoch_lqr)), fontsize=14)
 
