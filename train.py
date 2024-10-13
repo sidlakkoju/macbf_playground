@@ -37,11 +37,10 @@ def train(num_agents):
 
 
     for step in range(config.TRAIN_STEPS):
-        # s_np, g_np = generate_data(num_agents, config.DIST_MIN_THRES)
-        s, g = generate_data(num_agents, config.DIST_MIN_THRES, device)
-
+        # s_np, g_np = generate_data_np(num_agents, config.DIST_MIN_THRES)
         # s = torch.tensor(s_np, dtype=torch.float32).to(device)
         # g = torch.tensor(g_np, dtype=torch.float32).to(device)
+        s, g = generate_data_torch(num_agents, config.DIST_MIN_THRES, device)
 
         for _ in range(config.INNER_LOOPS):
             optimizer.zero_grad()
