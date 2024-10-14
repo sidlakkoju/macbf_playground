@@ -9,6 +9,10 @@ import matplotlib.pyplot as plt
 import core
 import config
 
+
+from vis import *
+
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
@@ -105,10 +109,6 @@ def main():
 
             # Refinement loop
             for _ in range(config.REFINE_LOOPS):
-
-                print("YOLO")
-
-
                 optimizer_res.zero_grad()
                 dsdt = core.dynamics(s, a + a_res)
                 s_next = s + dsdt * config.TIME_STEP
@@ -134,9 +134,9 @@ def main():
             s_np_ours.append(s_np_current)
 
             # Safety check
-            ttc_mask = core.ttc_dangerous_mask(s, config.DIST_MIN_CHECK,
-                                               config.TIME_TO_COLLISION_CHECK, indices)
-            
+            neighbor_features_cbf, _ = core.compute_neighbor_features(s, config.DIST_MIN_THRES, config.TOP_K)
+            ttc_mask = core.ttc_dangerous_mask(config.DIST_MIN_CHECK,config.TIME_TO_COLLISION_CHECK, neighbor_features_cbf)
+    
             safety_ratio = 1 - torch.mean(ttc_mask.float(), dim=1).cpu().numpy()
             safety_ours.append(safety_ratio)
             safety_info.append((safety_ratio == 1).astype(np.float32).reshape((1, -1)))
@@ -176,8 +176,9 @@ def main():
             s_np_lqr_current = s_lqr.cpu().numpy()
             s_np_lqr.append(s_np_lqr_current)
 
-            ttc_mask = core.ttc_dangerous_mask(s_lqr, config.DIST_MIN_CHECK,
-                                               config.TIME_TO_COLLISION_CHECK, indices)
+            neighbor_features_cbf, _ = core.compute_neighbor_features(s, config.DIST_MIN_THRES, config.TOP_K)
+            ttc_mask = core.ttc_dangerous_mask(config.DIST_MIN_CHECK,config.TIME_TO_COLLISION_CHECK, neighbor_features_cbf)
+
             safety_ratio = 1 - torch.mean(ttc_mask.float(), dim=1).cpu().numpy()
             safety_lqr.append(safety_ratio)
             safety_info_baseline.append((safety_ratio == 1).astype(np.float32).reshape((1, -1)))

@@ -17,7 +17,7 @@ wall_states = torch.tensor(wall_states_np, dtype=torch.float32).to(device)
 core.compute_neighbor_features(s, config.DIST_MIN_THRES, config.TOP_K, include_d_norm=True)
 
 neighbor_features_cbf, indices = core.compute_neighbor_features(s, config.DIST_MIN_THRES, config.TOP_K, include_d_norm=True)
-neighbor_features_cbf_obs, indices_obs = core.compute_neighbor_features_with_wall_agents(s, wall_states, config.DIST_MIN_THRES, config.TOP_K, include_d_norm=True)
+neighbor_features_cbf_obs, indices_obs = core.compute_neighbor_features(s, wall_states, config.DIST_MIN_THRES, config.TOP_K, include_d_norm=True)
 
 
 print(neighbor_features_cbf.shape)
@@ -27,7 +27,7 @@ print(neighbor_features_cbf_obs.shape)
 print(indices_obs.shape)
 
 
-ttc_mask = core.ttc_dangerous_mask_obs(s, config.DIST_MIN_CHECK,config.TIME_TO_COLLISION_CHECK, indices, neighbor_features_cbf_obs, )
+ttc_mask = core.ttc_dangerous_mask(config.DIST_MIN_CHECK,config.TIME_TO_COLLISION_CHECK, neighbor_features_cbf_obs, )
 
 
 print(f"ttc_mask: {ttc_mask.shape}")

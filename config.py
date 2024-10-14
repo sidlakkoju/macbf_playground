@@ -25,3 +25,9 @@ LEARNING_RATE = 1e-4
 
 ADD_NOISE_PROB = 0.0
 NOISE_SCALE = 0.3   
+
+
+# Social Mini Game Variables
+X_MIN, X_MAX = 0, 10
+Y_MIN, Y_MAX = 0, 10
+RES = 4
