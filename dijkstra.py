@@ -9,7 +9,7 @@ author: Atsushi Sakai(@Atsushi_twi)
 import matplotlib.pyplot as plt
 import math
 
-show_animation = True
+show_animation = False
 
 
 class Dijkstra:
@@ -45,8 +45,15 @@ class Dijkstra:
             self.parent_index = parent_index  # index of previous Node
 
         def __str__(self):
-            return str(self.x) + "," + str(self.y) + "," + str(
-                self.cost) + "," + str(self.parent_index)
+            return (
+                str(self.x)
+                + ","
+                + str(self.y)
+                + ","
+                + str(self.cost)
+                + ","
+                + str(self.parent_index)
+            )
 
     def planning(self, sx, sy, gx, gy):
         """
@@ -63,10 +70,18 @@ class Dijkstra:
             ry: y position list of the final path
         """
 
-        start_node = self.Node(self.calc_xy_index(sx, self.min_x),
-                               self.calc_xy_index(sy, self.min_y), 0.0, -1)
-        goal_node = self.Node(self.calc_xy_index(gx, self.min_x),
-                              self.calc_xy_index(gy, self.min_y), 0.0, -1)
+        start_node = self.Node(
+            self.calc_xy_index(sx, self.min_x),
+            self.calc_xy_index(sy, self.min_y),
+            0.0,
+            -1,
+        )
+        goal_node = self.Node(
+            self.calc_xy_index(gx, self.min_x),
+            self.calc_xy_index(gy, self.min_y),
+            0.0,
+            -1,
+        )
 
         open_set, closed_set = dict(), dict()
         open_set[self.calc_index(start_node)] = start_node
@@ -77,12 +92,16 @@ class Dijkstra:
 
             # show graph
             if show_animation:  # pragma: no cover
-                plt.plot(self.calc_position(current.x, self.min_x),
-                         self.calc_position(current.y, self.min_y), "xc")
+                plt.plot(
+                    self.calc_position(current.x, self.min_x),
+                    self.calc_position(current.y, self.min_y),
+                    "xc",
+                )
                 # for stopping simulation with the esc key.
                 plt.gcf().canvas.mpl_connect(
-                    'key_release_event',
-                    lambda event: [exit(0) if event.key == 'escape' else None])
+                    "key_release_event",
+                    lambda event: [exit(0) if event.key == "escape" else None],
+                )
                 if len(closed_set.keys()) % 10 == 0:
                     plt.pause(0.001)
 
@@ -100,9 +119,12 @@ class Dijkstra:
 
             # expand search grid based on motion model
             for move_x, move_y, move_cost in self.motion:
-                node = self.Node(current.x + move_x,
-                                 current.y + move_y,
-                                 current.cost + move_cost, c_id)
+                node = self.Node(
+                    current.x + move_x,
+                    current.y + move_y,
+                    current.cost + move_cost,
+                    c_id,
+                )
                 n_id = self.calc_index(node)
 
                 if n_id in closed_set:
@@ -125,7 +147,8 @@ class Dijkstra:
     def calc_final_path(self, goal_node, closed_set):
         # generate final course
         rx, ry = [self.calc_position(goal_node.x, self.min_x)], [
-            self.calc_position(goal_node.y, self.min_y)]
+            self.calc_position(goal_node.y, self.min_y)
+        ]
         parent_index = goal_node.parent_index
         while parent_index != -1:
             n = closed_set[parent_index]
@@ -180,8 +203,9 @@ class Dijkstra:
         print("y_width:", self.y_width)
 
         # obstacle map generation
-        self.obstacle_map = [[False for _ in range(self.y_width)]
-                             for _ in range(self.x_width)]
+        self.obstacle_map = [
+            [False for _ in range(self.y_width)] for _ in range(self.x_width)
+        ]
         for ix in range(self.x_width):
             x = self.calc_position(ix, self.min_x)
             for iy in range(self.y_width):
@@ -195,14 +219,16 @@ class Dijkstra:
     @staticmethod
     def get_motion_model():
         # dx, dy, cost
-        motion = [[1, 0, 1],
-                  [0, 1, 1],
-                  [-1, 0, 1],
-                  [0, -1, 1],
-                  [-1, -1, math.sqrt(2)],
-                  [-1, 1, math.sqrt(2)],
-                  [1, -1, math.sqrt(2)],
-                  [1, 1, math.sqrt(2)]]
+        motion = [
+            [1, 0, 1],
+            [0, 1, 1],
+            [-1, 0, 1],
+            [0, -1, 1],
+            [-1, -1, math.sqrt(2)],
+            [-1, 1, math.sqrt(2)],
+            [1, -1, math.sqrt(2)],
+            [1, 1, math.sqrt(2)],
+        ]
 
         return motion
 
@@ -255,5 +281,5 @@ def main():
         plt.show()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

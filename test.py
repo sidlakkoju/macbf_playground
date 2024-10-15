@@ -6,45 +6,22 @@ import torch
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-# Generate State, Goal, and Compute Neighbor Features
-# s_np, g_np = core.generate_data_np(32, 0.1)
-s_np, g_np, wall_states_np, wall_goals_np = core.generate_social_mini_game_data()
-
-s = torch.tensor(s_np, dtype=torch.float32).to(device)
-g = torch.tensor(g_np, dtype=torch.float32).to(device)
-wall_states = torch.tensor(wall_states_np, dtype=torch.float32).to(device)
-
-core.compute_neighbor_features(s, config.DIST_MIN_THRES, config.TOP_K, include_d_norm=True)
-
-neighbor_features_cbf, indices = core.compute_neighbor_features(s, config.DIST_MIN_THRES, config.TOP_K, include_d_norm=True)
-neighbor_features_cbf_obs, indices_obs = core.compute_neighbor_features(s, wall_states, config.DIST_MIN_THRES, config.TOP_K, include_d_norm=True)
-
-
-print(neighbor_features_cbf.shape)
-print(indices.shape)
-
-print(neighbor_features_cbf_obs.shape)
-print(indices_obs.shape)
+def generate_wall_hole(wall_x, hole_y_center, hole_height):
+    hole_y_min = hole_y_center - hole_height / 2
+    hole_y_max = hole_y_center + hole_height / 2
+    wall_y_positions = np.linspace(
+        config.Y_MIN, config.Y_MAX, (config.Y_MAX - config.Y_MIN) * config.RES + 1
+    )
+    wall_y_positions = wall_y_positions[
+        (wall_y_positions <= hole_y_min) | (wall_y_positions >= hole_y_max)
+    ]
+    wall_x_positions = np.ones_like(wall_y_positions) * wall_x
+    wall_x_positions = np.expand_dims(wall_x_positions, axis=1)
+    wall_y_positions = np.expand_dims(wall_y_positions, axis=1)
+    return np.concatenate([wall_x_positions, wall_y_positions], axis=1)
 
 
-ttc_mask = core.ttc_dangerous_mask(config.DIST_MIN_CHECK,config.TIME_TO_COLLISION_CHECK, neighbor_features_cbf_obs, )
-
-
-print(f"ttc_mask: {ttc_mask.shape}")
-safety_ratio = 1 - torch.mean(ttc_mask.float(), dim=1).cpu().numpy()
-
-print(f"safety_ratio: {safety_ratio.shape}")
-
-core.plot_single_state_with_wall_separate(s_np, g_np, wall_states_np, wall_goals_np,
-                                     safety_ratio, s_np, agent_size=100)
-
-
-
-
-
-
-
-
+print(generate_wall_hole(5.0, 5.0, 1.0))
 
 
 # # Example usage:
@@ -67,7 +44,6 @@ core.plot_single_state_with_wall_separate(s_np, g_np, wall_states_np, wall_goals
 #                                      safety, original_agent_state, agent_size=100)
 
 
-
 # # Plot
 # core.plot_single_state_with_original(s_np, g_np, safety_ratio, s_np, agent_size=100)
 
@@ -77,7 +53,7 @@ core.plot_single_state_with_wall_separate(s_np, g_np, wall_states_np, wall_goals
 #     """
 #     Generates initial states and goals for a social mini-game with two agents and a wall.
 #     The agents start on one side of the wall and need to pass through a hole to reach their goals.
-    
+
 #     Returns:
 #         states: np.array of shape (2, 4), where each row is [x, y, vx, vy]
 #         goals: np.array of shape (2, 2), where each row is [goal_x, goal_y]
@@ -162,4 +138,3 @@ core.plot_single_state_with_wall_separate(s_np, g_np, wall_states_np, wall_goals
 
 # # Plot the initial setup
 # plot_initial_setup(states, goals, wall)
-
