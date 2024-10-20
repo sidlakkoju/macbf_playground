@@ -10,8 +10,13 @@ import config
 from core import *
 from vis import *
 
-from dijkstra import Dijkstra
+
+from a_star import AStarPlanner
+
 import copy
+
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -75,7 +80,7 @@ def main():
         plt.close()
         fig = render_init()
 
-    for istep in range(1):
+    for istep in range(3):
         start_time = time.time()
 
         safety_info = []
@@ -107,18 +112,25 @@ def main():
 
         ox = wall_points_np[:, 0].tolist() + border_points_np[:, 0].tolist()
         oy = wall_points_np[:, 1].tolist() + border_points_np[:, 1].tolist()
-        dijkstra = Dijkstra(
-            ox, oy, resolution=1 / config.RES, robot_radius=config.DIST_MIN_THRES * 2
+        
+        # global a_star_planner
+        a_star_planner = AStarPlanner(
+            ox, oy, resolution=1 / config.RES, rr=config.DIST_MIN_THRES * 1.5
         )
 
         # Initialize trajectories and indices for each agent
         num_agents = s_np_ori.shape[0]
         trajectories = []
-        # traj_indices = np.zeros(num_agents, dtype=int)  # Current index in trajectory
+
+        # # No Path Planning
+        # g_np_ori_expanded = np.expand_dims(g_np_ori, 1)
+        # trajectories = g_np_ori_expanded.tolist()
+
+        # Path Planning
         for i in range(num_agents):
             sx, sy = s_np_ori[i, 0], s_np_ori[i, 1]
             gx, gy = g_np_ori[i, 0], g_np_ori[i, 1]
-            rx, ry = dijkstra.planning(sx, sy, gx, gy)
+            rx, ry = a_star_planner.planning(sx, sy, gx, gy)
             trajectory = list(zip(rx, ry))
             trajectories.append(trajectory)
 
@@ -143,7 +155,7 @@ def main():
                 elif dist_to_next > config.MAX_THRESHOLD:  # Recompute trajectory
                     sx, sy = agent_pos[0], agent_pos[1]
                     gx, gy = g_np_ori[agent_idx, 0], g_np_ori[agent_idx, 1]
-                    rx, ry = dijkstra.planning(sx, sy, gx, gy)
+                    rx, ry = a_star_planner.planning(sx, sy, gx, gy)
                     trajectory = list(zip(rx, ry))
                     trajectories[agent_idx] = trajectory
                     next_waypoint = np.array(trajectory[-1])
@@ -206,7 +218,7 @@ def main():
 
             with torch.no_grad():
                 a_opt = a + a_res.detach()
-                # dsdt = dynamics(s, a_opt)
+                dsdt = dynamics(s, a_opt)
                 # s = s + dsdt * config.TIME_STEP
                 s = take_step_obstacles(s, a, wall_agents=obs)
             s_np = s.cpu().numpy()
@@ -280,7 +292,7 @@ def main():
                     # Recompute trajectory
                     sx, sy = agent_pos[0], agent_pos[1]
                     gx, gy = g_np_ori[agent_idx, 0], g_np_ori[agent_idx, 1]
-                    rx, ry = dijkstra.planning(sx, sy, gx, gy)
+                    rx, ry = a_star_planner.planning(sx, sy, gx, gy)
                     trajectory = list(zip(rx, ry))
                     trajectories_lqr[agent_idx] = trajectory
                     next_waypoint = np.array(trajectory[-1])
@@ -364,7 +376,7 @@ def main():
 
                 plot_single_state_with_wall_separate(
                     state_ours,
-                    g_np,
+                    g_np_ori,
                     safety_ours_current,
                     border_points_np,
                     wall_points_np,
@@ -373,7 +385,7 @@ def main():
                     action=a_np_ours[j_ours],
                     action_res=a_res_np_ours[j_ours],
                     action_opt=a_opt_np_ours[j_ours],
-                    agent_size=100,
+                    agent_size=30,
                 )
                 plt.title(
                     "MaCBF: Safety Rate = {:.3f}".format(np.mean(safety_ratios_epoch)),
@@ -387,14 +399,14 @@ def main():
                 safety_lqr_current = np.squeeze(safety_lqr[j_lqr])
                 plot_single_state_with_wall_separate(
                     state_lqr,
-                    g_np_lqr,
+                    g_np_ori,
                     safety_lqr_current,
                     border_points_np,
                     wall_points_np,
                     trajectories=initial_trajectories,
                     wall_agent_state=obs_np,
                     action_opt=a_np_lqr[j_lqr],
-                    agent_size=100,
+                    agent_size=30,
                 )
                 plt.title(
                     "LQR: Safety Rate = {:.3f}".format(

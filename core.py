@@ -112,19 +112,34 @@ def generate_social_mini_game_data():
     y_min, y_max = 0.0, 10.0
     wall_x = 5.0
     hole_y_center = 5.0
-    hole_height = 0.5
+    hole_height = 0.2
     hole_y_min = hole_y_center - hole_height / 2
     hole_y_max = hole_y_center + hole_height / 2
 
-    num_agents = 2
+    num_agents = 8
     agent_states = np.zeros((num_agents, 4), dtype=np.float32)
     agent_goals = np.zeros((num_agents, 2), dtype=np.float32)
     agent_offset = 2.0
-    agent_states[0, :2] = [wall_x - agent_offset - 1, y_max - agent_offset + 1]
+
+    agent_states[0, :2] = [wall_x - agent_offset - 1, y_max - (agent_offset + 0.0) + 1]
     agent_states[1, :2] = [wall_x - agent_offset - 1, y_min + agent_offset - 1]
+    agent_states[2, :2] = [wall_x - agent_offset - 1, y_max - (agent_offset + 0.5) + 1]
+    agent_states[3, :2] = [wall_x - agent_offset - 1, y_min + (agent_offset + 0.5) - 1]
+    agent_states[4, :2] = [wall_x - agent_offset - 1, y_max - (agent_offset + 1.0) + 1]
+    agent_states[5, :2] = [wall_x - agent_offset - 1, y_min + (agent_offset + 1.0) - 1]
+    agent_states[6, :2] = [wall_x - agent_offset - 1, y_max - (agent_offset + 1.5) + 1]
+    agent_states[7, :2] = [wall_x - agent_offset - 1, y_min + (agent_offset + 1.5) - 1]
+    agent_states[0, 2:] = 0.0
     agent_states[:, 2:] = 0.0
+
     agent_goals[0] = [wall_x + agent_offset, y_min + (agent_offset + 0.0)]
     agent_goals[1] = [wall_x + agent_offset, y_max - (agent_offset + 0.0)]
+    agent_goals[2] = [wall_x + agent_offset, y_min + (agent_offset + 0.5)]
+    agent_goals[3] = [wall_x + agent_offset, y_max - (agent_offset + 1.0)]
+    agent_goals[4] = [wall_x + agent_offset, y_min + (agent_offset + 1.5)]
+    agent_goals[5] = [wall_x + agent_offset, y_max - (agent_offset + 2.0)]
+    agent_goals[6] = [wall_x + agent_offset, y_min + (agent_offset + 2.5)]
+    agent_goals[7] = [wall_x + agent_offset, y_max - (agent_offset + 3.0)]
 
     # Wall Representation
     border_points = generate_border()
@@ -293,7 +308,7 @@ def barrier_loss(h, s, r, ttc, indices):
         s, config.DIST_MIN_THRES, config.TOP_K
     )
     mask = ttc_dangerous_mask(
-        config.DIST_MIN_CHECK, config.TIME_TO_COLLISION_CHECK, neighbor_features_cbf
+        config.DIST_MIN_CHECK, ttc, neighbor_features_cbf
     )
     h = h.squeeze(2)  # If h has shape [num_agents, k, 1]
     h = h.view(-1)  # Shape: [num_agents * k]
@@ -372,12 +387,8 @@ def compute_neighbor_features(
 ):
     num_agents = s.size(0)
 
-    s_diff_agents = s.unsqueeze(1) - s.unsqueeze(
-        0
-    )  # Shape: [num_agents, num_agents, 4]
-    distances_agents = (
-        torch.norm(s_diff_agents[:, :, :2], dim=2) + 1e-4
-    )  # Shape: [num_agents, num_agents]
+    s_diff_agents = s.unsqueeze(1) - s.unsqueeze(0)  # Shape: [num_agents, num_agents, 4]
+    distances_agents = (torch.norm(s_diff_agents[:, :, :2], dim=2) + 1e-4)  # Shape: [num_agents, num_agents]
 
     # Exclude self-interactions by setting self-distances to a large value
     eye = torch.eye(num_agents, device=s.device)
@@ -386,22 +397,15 @@ def compute_neighbor_features(
     # Select top k closest agents
     if indices is None:
         _, indices = torch.topk(-distances_agents, k=k, dim=1)  # Negative for topk
-    neighbor_features_agents = s_diff_agents[
-        torch.arange(num_agents).unsqueeze(1), indices
-    ]
+    neighbor_features_agents = s_diff_agents[torch.arange(num_agents).unsqueeze(1), indices]
 
     # Add the 'eye' variable for agents
-    eye_agents = eye[torch.arange(num_agents).unsqueeze(1), indices].unsqueeze(
-        2
-    )  # Shape: [num_agents, k, 1]
+    eye_agents = eye[torch.arange(num_agents).unsqueeze(1), indices].unsqueeze(2)  # Shape: [num_agents, k, 1]
     neighbor_features_agents = torch.cat([neighbor_features_agents, eye_agents], dim=2)
 
     if include_d_norm:
         d_norm_agents = (
-            distances_agents[torch.arange(num_agents).unsqueeze(1), indices].unsqueeze(
-                2
-            )
-            - r
+            distances_agents[torch.arange(num_agents).unsqueeze(1), indices].unsqueeze(2) - r
         )
         neighbor_features_agents = torch.cat(
             [neighbor_features_agents, d_norm_agents], dim=2
@@ -411,9 +415,7 @@ def compute_neighbor_features(
         num_wall_agents = wall_agents.size(0)
 
         # Compute s_diff between agents and obstacles
-        s_diff_obstacles = s.unsqueeze(1) - wall_agents.unsqueeze(
-            0
-        )  # Shape: [num_agents, num_obstacles, 4]
+        s_diff_obstacles = s.unsqueeze(1) - wall_agents.unsqueeze(0)  # Shape: [num_agents, num_obstacles, 4]
         distances_obstacles = (
             torch.norm(s_diff_obstacles[:, :, :2], dim=2) + 1e-4
         )  # Shape: [num_agents, num_obstacles]
