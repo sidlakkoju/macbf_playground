@@ -219,8 +219,8 @@ def main():
             with torch.no_grad():
                 a_opt = a + a_res.detach()
                 dsdt = dynamics(s, a_opt)
-                # s = s + dsdt * config.TIME_STEP
-                s = take_step_obstacles(s, a, wall_agents=obs)
+                s = s + dsdt * config.TIME_STEP
+                # s = take_step_obstacles(s, a, wall_agents=obs)
             s_np = s.cpu().numpy()
 
             s_np_ours.append(s_np)
@@ -312,8 +312,8 @@ def main():
             s_ref = torch.cat([s_lqr[:, :2] - g_lqr, s_lqr[:, 2:]], dim=1)
             a_lqr = -s_ref @ K.T
 
-            # s_lqr = s_lqr + dynamics(s_lqr, a_lqr) * config.TIME_STEP
-            s_lqr = take_step_obstacles(s_lqr, a_lqr, wall_agents=obs)
+            s_lqr = s_lqr + dynamics(s_lqr, a_lqr) * config.TIME_STEP
+            # s_lqr = take_step_obstacles(s_lqr, a_lqr, wall_agents=obs)
 
             s_np_lqr_current = s_lqr.cpu().numpy()
             s_np_lqr.append(s_np_lqr_current)

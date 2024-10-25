@@ -50,10 +50,10 @@ def main():
     # cbf_net.load_state_dict(torch.load(os.path.join(args.model_path, 'cbf_net.pth')))
     # action_net.load_state_dict(torch.load(os.path.join(args.model_path, 'action_net.pth')))
     cbf_net.load_state_dict(
-        torch.load("checkpoints_mps/cbf_net_step_19000.pth", weights_only=True)
+        torch.load("checkpoints/cbf_net_step_6000.pth", weights_only=True)
     )
     action_net.load_state_dict(
-        torch.load("checkpoints_mps/action_net_step_19000.pth", weights_only=True)
+        torch.load("checkpoints/action_net_step_6000.pth", weights_only=True)
     )
 
     cbf_net.eval()
@@ -282,7 +282,7 @@ def main():
                 j_ours = min(j, len(s_np_ours) - 1)
                 state_ours = s_np_ours[j_ours]
                 safety_ours_current = np.squeeze(safety_ours[j_ours])
-                core.plot_single_state_with_original(
+                plot_single_state_with_original(
                     state_ours, g_np, safety_ours_current, s_np_ori, agent_size
                 )
                 plt.title(
@@ -295,7 +295,7 @@ def main():
                 j_lqr = min(j, len(s_np_lqr) - 1)
                 state_lqr = s_np_lqr[j_lqr]
                 safety_lqr_current = np.squeeze(safety_lqr[j_lqr])
-                core.plot_single_state_with_original(
+                plot_single_state_with_original(
                     state_lqr, g_np, safety_lqr_current, s_np_ori, agent_size
                 )
                 plt.title(

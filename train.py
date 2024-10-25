@@ -64,7 +64,8 @@ def train(num_agents):
                 s = s + dynamics(s, a) * config.TIME_STEP
 
         if step % config.DISPLAY_STEPS == 0:
-            print(f"Step: {step}, Loss: {loss.item():.4f}")
+            # print(f"Step: {step}, Loss: {loss.item():.4f}")
+            print(f"Step: {step}, Loss: {loss.item()}")
         
         if (step + 1) % config.CHECKPOINT_STEPS == 0:
             save_model(cbf_net, "cbf_net", step + 1)

@@ -16,10 +16,11 @@ def plot_single_state_with_wall_separate(
     agent_size=0.5,
 ):
 
-    print("Yahoo!!!")
-    print(agent_goal)
 
-    # Precompute agent state for visualization (needed for actions, etc.)
+    action = None
+    action_res = None
+    action_opt = None
+    
     agent_state_vis = agent_state[:, :2]
 
     # Plot border and wall points first
@@ -163,3 +164,39 @@ def plot_single_state_with_wall_separate(
         ax.spines[side].set_linewidth(2)
         ax.spines[side].set_color("grey")
     plt.show()
+
+
+
+# LEGACY CHUCHU FAN CODE
+
+def plot_single_state_with_original(state, target, safety, original_state, agent_size=100):
+    """
+    Plot a single frame given a state vector, target points, safety metrics, 
+    and an original state vector for consistent scaling.
+
+    Args:
+        state: np.array of shape (n_agents, 4) where each row is [x, y, vx, vy]
+        target: np.array of target points of shape (n_targets, 2)
+        safety: np.array of safety values of shape (n_agents,)
+        original_state: The original state vector (n_agents, 4) used for consistent scaling
+        agent_size: Size of the agents for visualization
+    """
+    vis_range = max(1, np.amax(np.abs(original_state[:, :2])))
+    state_vis = state[:, :2] / vis_range
+    target_vis = target / vis_range
+    plt.scatter(state_vis[:, 0], state_vis[:, 1], color='darkorange',
+                s=agent_size, label='Agent', alpha=0.6)
+    plt.scatter(target_vis[:, 0], target_vis[:, 1], color='deepskyblue',
+                s=agent_size, label='Target', alpha=0.6)
+    plt.scatter(state_vis[safety < 1, 0], state_vis[safety < 1, 1],
+                color='red', s=agent_size, label='Collision', alpha=0.9)
+    plt.xlim(-0.5, 1.5)
+    plt.ylim(-0.5, 1.5)
+    ax = plt.gca()
+    for side in ax.spines.keys():
+        ax.spines[side].set_linewidth(2)
+        ax.spines[side].set_color('grey')
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    plt.legend(loc='upper right', fontsize=14)
+

@@ -125,10 +125,12 @@ def generate_social_mini_game_data():
     agent_states[1, :2] = [wall_x - agent_offset - 1, y_min + agent_offset - 1]
     agent_states[2, :2] = [wall_x - agent_offset - 1, y_max - (agent_offset + 0.5) + 1]
     agent_states[3, :2] = [wall_x - agent_offset - 1, y_min + (agent_offset + 0.5) - 1]
-    agent_states[4, :2] = [wall_x - agent_offset - 1, y_max - (agent_offset + 1.0) + 1]
-    agent_states[5, :2] = [wall_x - agent_offset - 1, y_min + (agent_offset + 1.0) - 1]
-    agent_states[6, :2] = [wall_x - agent_offset - 1, y_max - (agent_offset + 1.5) + 1]
-    agent_states[7, :2] = [wall_x - agent_offset - 1, y_min + (agent_offset + 1.5) - 1]
+
+    agent_states[4, :2] = [wall_x + agent_offset + 1, y_max - (agent_offset + 0.0) + 1]
+    agent_states[5, :2] = [wall_x + agent_offset + 1, y_min + agent_offset - 1]
+    agent_states[6, :2] = [wall_x + agent_offset + 1, y_max - (agent_offset + 0.5) + 1]
+    agent_states[7, :2] = [wall_x + agent_offset + 1, y_min + (agent_offset + 0.5) - 1]
+
     agent_states[0, 2:] = 0.0
     agent_states[:, 2:] = 0.0
 
@@ -136,10 +138,11 @@ def generate_social_mini_game_data():
     agent_goals[1] = [wall_x + agent_offset, y_max - (agent_offset + 0.0)]
     agent_goals[2] = [wall_x + agent_offset, y_min + (agent_offset + 0.5)]
     agent_goals[3] = [wall_x + agent_offset, y_max - (agent_offset + 1.0)]
-    agent_goals[4] = [wall_x + agent_offset, y_min + (agent_offset + 1.5)]
-    agent_goals[5] = [wall_x + agent_offset, y_max - (agent_offset + 2.0)]
-    agent_goals[6] = [wall_x + agent_offset, y_min + (agent_offset + 2.5)]
-    agent_goals[7] = [wall_x + agent_offset, y_max - (agent_offset + 3.0)]
+
+    agent_goals[4] = [wall_x - agent_offset, y_min + (agent_offset + 0.0)]
+    agent_goals[5] = [wall_x - agent_offset, y_max - (agent_offset + 0.0)]
+    agent_goals[6] = [wall_x - agent_offset, y_min + (agent_offset + 0.5)]
+    agent_goals[7] = [wall_x - agent_offset, y_max - (agent_offset + 1.0)]
 
     # Wall Representation
     border_points = generate_border()
