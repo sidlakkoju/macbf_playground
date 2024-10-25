@@ -107,12 +107,12 @@ def main():
         s_np_lqr = []
         a_np_lqr = []
 
-        safety_ours = []
-        safety_lqr = []
+        collision_check_ours = []
+        collision_check_lqr = []
 
         ox = wall_points_np[:, 0].tolist() + border_points_np[:, 0].tolist()
         oy = wall_points_np[:, 1].tolist() + border_points_np[:, 1].tolist()
-        
+
         # global a_star_planner
         a_star_planner = AStarPlanner(
             ox, oy, resolution=1 / config.RES, rr=config.DIST_MIN_THRES * 1.5
@@ -218,9 +218,9 @@ def main():
 
             with torch.no_grad():
                 a_opt = a + a_res.detach()
-                dsdt = dynamics(s, a_opt)
-                s = s + dsdt * config.TIME_STEP
-                # s = take_step_obstacles(s, a, wall_agents=obs)
+                # dsdt = dynamics(s, a_opt)
+                # s = s + dsdt * config.TIME_STEP
+                s = take_step_obstacles(s, a, wall_agents=obs)
             s_np = s.cpu().numpy()
 
             s_np_ours.append(s_np)
@@ -238,9 +238,9 @@ def main():
                 neighbor_features_cbf,
             )
 
+            collision_check_ours.append(torch.any(ttc_mask, dim=1).cpu().numpy())
+
             safety_ratio = 1 - torch.mean(ttc_mask.float(), dim=1).cpu().numpy()
-            safety_ours.append(safety_ratio)
-            safety_info.append((safety_ratio == 1).astype(np.float32).reshape((1, -1)))
             safety_ratio_mean = np.mean(safety_ratio == 1)
             safety_ratios_epoch.append(safety_ratio_mean)
 
@@ -312,8 +312,8 @@ def main():
             s_ref = torch.cat([s_lqr[:, :2] - g_lqr, s_lqr[:, 2:]], dim=1)
             a_lqr = -s_ref @ K.T
 
-            s_lqr = s_lqr + dynamics(s_lqr, a_lqr) * config.TIME_STEP
-            # s_lqr = take_step_obstacles(s_lqr, a_lqr, wall_agents=obs)
+            # s_lqr = s_lqr + dynamics(s_lqr, a_lqr) * config.TIME_STEP
+            s_lqr = take_step_obstacles(s_lqr, a_lqr, wall_agents=obs)
 
             s_np_lqr_current = s_lqr.cpu().numpy()
             s_np_lqr.append(s_np_lqr_current)
@@ -333,9 +333,11 @@ def main():
                 config.TIME_TO_COLLISION_CHECK,
                 neighbor_features_cbf,
             )
+
+            collision_check_lqr.append(torch.any(ttc_mask, dim=1).cpu().numpy())
+
             safety_ratio = 1 - torch.mean(ttc_mask.float(), dim=1).cpu().numpy()
 
-            safety_lqr.append(safety_ratio)
             safety_info_baseline.append(
                 (safety_ratio == 1).astype(np.float32).reshape((1, -1))
             )
@@ -372,7 +374,7 @@ def main():
                 plt.subplot(121)
                 j_ours = min(j, len(s_np_ours) - 1)
                 state_ours = s_np_ours[j_ours]
-                safety_ours_current = np.squeeze(safety_ours[j_ours])
+                safety_ours_current = collision_check_ours[j_ours]
 
                 plot_single_state_with_wall_separate(
                     state_ours,
@@ -396,7 +398,8 @@ def main():
                 plt.subplot(122)
                 j_lqr = min(j, len(s_np_lqr) - 1)
                 state_lqr = s_np_lqr[j_lqr]
-                safety_lqr_current = np.squeeze(safety_lqr[j_lqr])
+                safety_lqr_current = collision_check_lqr[j_lqr]
+
                 plot_single_state_with_wall_separate(
                     state_lqr,
                     g_np_ori,

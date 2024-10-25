@@ -121,29 +121,18 @@ def generate_social_mini_game_data():
     agent_goals = np.zeros((num_agents, 2), dtype=np.float32)
     agent_offset = 2.0
 
-    agent_states[0, :2] = [wall_x - agent_offset - 1, y_max - (agent_offset + 0.0) + 1]
-    agent_states[1, :2] = [wall_x - agent_offset - 1, y_min + agent_offset - 1]
-    agent_states[2, :2] = [wall_x - agent_offset - 1, y_max - (agent_offset + 0.5) + 1]
-    agent_states[3, :2] = [wall_x - agent_offset - 1, y_min + (agent_offset + 0.5) - 1]
+    y_positions = np.linspace(y_min + agent_offset, y_max - agent_offset, num_agents // 2)
 
-    agent_states[4, :2] = [wall_x + agent_offset + 1, y_max - (agent_offset + 0.0) + 1]
-    agent_states[5, :2] = [wall_x + agent_offset + 1, y_min + agent_offset - 1]
-    agent_states[6, :2] = [wall_x + agent_offset + 1, y_max - (agent_offset + 0.5) + 1]
-    agent_states[7, :2] = [wall_x + agent_offset + 1, y_min + (agent_offset + 0.5) - 1]
-
-    agent_states[0, 2:] = 0.0
-    agent_states[:, 2:] = 0.0
-
-    agent_goals[0] = [wall_x + agent_offset, y_min + (agent_offset + 0.0)]
-    agent_goals[1] = [wall_x + agent_offset, y_max - (agent_offset + 0.0)]
-    agent_goals[2] = [wall_x + agent_offset, y_min + (agent_offset + 0.5)]
-    agent_goals[3] = [wall_x + agent_offset, y_max - (agent_offset + 1.0)]
-
-    agent_goals[4] = [wall_x - agent_offset, y_min + (agent_offset + 0.0)]
-    agent_goals[5] = [wall_x - agent_offset, y_max - (agent_offset + 0.0)]
-    agent_goals[6] = [wall_x - agent_offset, y_min + (agent_offset + 0.5)]
-    agent_goals[7] = [wall_x - agent_offset, y_max - (agent_offset + 1.0)]
-
+    agent_states[:4, 1] = y_positions
+    agent_states[4:, 1] = y_positions
+    agent_states[:4, 0] = x_min + agent_offset
+    agent_states[4:, 0] = x_max - agent_offset
+    
+    agent_goals[:4, 1] = y_positions
+    agent_goals[4:, 1] = y_positions
+    agent_goals[:4, 0] = x_max - agent_offset
+    agent_goals[4:, 0] = x_min + agent_offset
+    
     # Wall Representation
     border_points = generate_border()
     wall_points = generate_wall_hole(wall_x, hole_y_center, hole_height)
@@ -246,7 +235,7 @@ def take_step_obstacles(s, a, wall_agents=None):
 
     ttc_mask = ttc_dangerous_mask(
         config.DIST_MIN_CHECK,
-        config.TIME_TO_COLLISION_CHECK,
+        0,
         neighbor_features_next,
     )
 

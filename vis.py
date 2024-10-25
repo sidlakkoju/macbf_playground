@@ -142,7 +142,8 @@ def plot_single_state_with_wall_separate(
     )
 
     # Plot collision states where safety < 1
-    collision_indices = np.where(safety < 1)[0]
+    collision_indices = np.where(safety)[0]
+    
     if collision_indices.size > 0:
         plt.scatter(
             agent_state_vis[collision_indices, 0],
@@ -163,7 +164,6 @@ def plot_single_state_with_wall_separate(
     for side in ax.spines.keys():
         ax.spines[side].set_linewidth(2)
         ax.spines[side].set_color("grey")
-    plt.show()
 
 
 
