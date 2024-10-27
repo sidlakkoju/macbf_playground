@@ -17,9 +17,9 @@ def plot_single_state_with_wall_separate(
 ):
 
 
-    action = None
-    action_res = None
-    action_opt = None
+    # action = None
+    # action_res = None
+    # action_opt = None
     
     agent_state_vis = agent_state[:, :2]
 
@@ -141,7 +141,7 @@ def plot_single_state_with_wall_separate(
         alpha=0.6,
     )
 
-    # Plot collision states where safety < 1
+    
     collision_indices = np.where(safety)[0]
     
     if collision_indices.size > 0:

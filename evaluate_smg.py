@@ -15,10 +15,14 @@ from a_star import AStarPlanner
 
 import copy
 
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
+print(f"Using device: {device}")
 
 
 def parse_args():
@@ -53,11 +57,19 @@ def main():
     cbf_net = CBFNetwork().to(device)
     action_net = ActionNetwork().to(device)
 
+    # cbf_net.load_state_dict(
+    #     torch.load("checkpoints_mps/cbf_net_step_19000.pth", weights_only=True)
+    # )
+    # action_net.load_state_dict(
+    #     torch.load("checkpoints_mps/action_net_step_19000.pth",
+    #                weights_only=True)
+    # )
+
     cbf_net.load_state_dict(
-        torch.load("checkpoints_mps/cbf_net_step_19000.pth", weights_only=True)
+        torch.load('checkpoints_lambda/cbf_net_step_70000.pth', weights_only=True, map_location=device)
     )
     action_net.load_state_dict(
-        torch.load("checkpoints_mps/action_net_step_19000.pth", weights_only=True)
+        torch.load('checkpoints_lambda/action_net_step_70000.pth', weights_only=True, map_location=device)
     )
 
     cbf_net.eval()
@@ -92,7 +104,8 @@ def main():
         )  # s_np_ori, g_np_ori = np.expand_dims(s_np_ori[1], axis=0), np.expand_dims(g_np_ori[1], axis=0)
 
         s_np, g_np = np.copy(s_np_ori), np.copy(g_np_ori)
-        init_dist_errors.append(np.mean(np.linalg.norm(s_np[:, :2] - g_np, axis=1)))
+        init_dist_errors.append(
+            np.mean(np.linalg.norm(s_np[:, :2] - g_np, axis=1)))
 
         # Convert to torch tensors
         s = torch.tensor(s_np, dtype=torch.float32, device=device)
@@ -106,6 +119,9 @@ def main():
 
         s_np_lqr = []
         a_np_lqr = []
+
+        safety_ours = []
+        safety_lqr = []
 
         collision_check_ours = []
         collision_check_lqr = []
@@ -137,8 +153,8 @@ def main():
         trajectories_lqr = copy.deepcopy(trajectories)
         initial_trajectories = copy.deepcopy(trajectories)
 
-        # Run INNER_LOOPS steps to reach the current goals
-        for i in range(config.INNER_LOOPS):
+        # Run EVALUATE_LENGTH steps to reach the current goals
+        for i in range(config.EVALUATE_LENGTH):
             # Update the goal for each agent
             for agent_idx in range(num_agents):
                 agent_pos = s_np[agent_idx, :2]
@@ -188,7 +204,8 @@ def main():
 
             # Initialize a_res for refinement
             a_res = torch.zeros_like(a, requires_grad=True)
-            optimizer_res = torch.optim.SGD([a_res], lr=config.REFINE_LEARNING_RATE)
+            optimizer_res = torch.optim.SGD(
+                [a_res], lr=config.REFINE_LEARNING_RATE)
 
             # Refinement loop
             for _ in range(config.REFINE_LOOPS):
@@ -238,9 +255,14 @@ def main():
                 neighbor_features_cbf,
             )
 
-            collision_check_ours.append(torch.any(ttc_mask, dim=1).cpu().numpy())
+            collision_check_ours.append(
+                torch.any(ttc_mask, dim=1).cpu().numpy())
 
-            safety_ratio = 1 - torch.mean(ttc_mask.float(), dim=1).cpu().numpy()
+            safety_ratio = 1 - \
+                torch.mean(ttc_mask.float(), dim=1).cpu().numpy()
+            safety_ours.append(safety_ratio)
+            safety_info.append((safety_ratio == 1).astype(
+                np.float32).reshape((1, -1)))
             safety_ratio_mean = np.mean(safety_ratio == 1)
             safety_ratios_epoch.append(safety_ratio_mean)
 
@@ -260,7 +282,8 @@ def main():
         )
         dist_reward.append(
             np.mean(
-                (np.linalg.norm(s_np[:, :2] - g_np, axis=1) < 0.2).astype(np.float32)
+                (np.linalg.norm(s_np[:, :2] - g_np,
+                 axis=1) < 0.2).astype(np.float32)
                 * 10
             )
         )
@@ -271,11 +294,12 @@ def main():
         s_lqr = torch.tensor(s_np_ori, dtype=torch.float32, device=device)
         s_np_lqr_current = s_np_ori.copy()
         g_np_lqr = g_np_ori.copy()
-        for i in range(config.INNER_LOOPS):
+        for i in range(config.EVALUATE_LENGTH):
 
             # Update the goal for each agent
             for agent_idx in range(num_agents):
-                agent_pos = s_np_lqr_current[agent_idx, :2]  # Use LQR's agent positions
+                # Use LQR's agent positions
+                agent_pos = s_np_lqr_current[agent_idx, :2]
                 traj = trajectories_lqr[agent_idx]
                 if len(traj) <= 1:
                     continue
@@ -334,10 +358,11 @@ def main():
                 neighbor_features_cbf,
             )
 
-            collision_check_lqr.append(torch.any(ttc_mask, dim=1).cpu().numpy())
-
-            safety_ratio = 1 - torch.mean(ttc_mask.float(), dim=1).cpu().numpy()
-
+            collision_check_lqr.append(
+                torch.any(ttc_mask, dim=1).cpu().numpy())
+            safety_ratio = 1 - \
+                torch.mean(ttc_mask.float(), dim=1).cpu().numpy()
+            safety_lqr.append(safety_ratio)
             safety_info_baseline.append(
                 (safety_ratio == 1).astype(np.float32).reshape((1, -1))
             )
@@ -345,7 +370,8 @@ def main():
             safety_ratios_epoch_lqr.append(safety_ratio_mean)
 
             if (
-                np.mean(np.linalg.norm(s_np_lqr_current[:, :2] - g_np_lqr, axis=1))
+                np.mean(np.linalg.norm(
+                    s_np_lqr_current[:, :2] - g_np_lqr, axis=1))
                 < config.DIST_MIN_CHECK / 3
             ):
                 break
@@ -354,18 +380,12 @@ def main():
             np.mean(np.sum(np.concatenate(safety_info_baseline, axis=0) - 1, axis=0))
         )
         dist_reward_baseline.append(
-            np.mean(
-                (np.linalg.norm(s_np_lqr_current[:, :2] - g_np, axis=1) < 0.2).astype(
-                    np.float32
-                )
-                * 10
-            )
+            np.mean((np.linalg.norm(s_np_lqr_current[:, :2] - g_np, axis=1) < 0.2).astype(np.float32) * 10
+                    )
         )
 
         if args.vis:
             # Visualize the trajectories
-            vis_range = max(1, np.amax(np.abs(s_np_ori[:, :2])))
-            agent_size = 100 / vis_range**2
             max_steps = max(len(s_np_ours), len(s_np_lqr))
             for j in range(max_steps):
                 plt.clf()
@@ -390,7 +410,8 @@ def main():
                     agent_size=30,
                 )
                 plt.title(
-                    "MaCBF: Safety Rate = {:.3f}".format(np.mean(safety_ratios_epoch)),
+                    "MaCBF: Safety Rate = {:.3f}".format(
+                        np.mean(safety_ratios_epoch)),
                     fontsize=14,
                 )
 
@@ -417,7 +438,6 @@ def main():
                     ),
                     fontsize=14,
                 )
-
                 plt.pause(0.01)
             plt.clf()
 

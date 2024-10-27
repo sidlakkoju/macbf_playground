@@ -13,7 +13,12 @@ import config
 from vis import *
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
 print(f"Using device: {device}")
 
 
@@ -47,13 +52,20 @@ def main():
     # Load models
     cbf_net = core.CBFNetwork().to(device)
     action_net = core.ActionNetwork().to(device)
-    # cbf_net.load_state_dict(torch.load(os.path.join(args.model_path, 'cbf_net.pth')))
-    # action_net.load_state_dict(torch.load(os.path.join(args.model_path, 'action_net.pth')))
+
+
+    # cbf_net.load_state_dict(
+    #     torch.load('checkpoints_mps/cbf_net_step_19000.pth', weights_only=True)
+    # )
+    # action_net.load_state_dict(
+    #     torch.load('checkpoints_mps/action_net_step_19000.pth', weights_only=True)
+    # )
+
     cbf_net.load_state_dict(
-        torch.load("checkpoints_mps/cbf_net_step_19000.pth", weights_only=True)
+        torch.load('checkpoints_lambda/cbf_net_step_70000.pth', weights_only=True, map_location=device)
     )
     action_net.load_state_dict(
-        torch.load("checkpoints_mps/action_net_step_19000.pth", weights_only=True)
+        torch.load('checkpoints_lambda/action_net_step_70000.pth', weights_only=True, map_location=device)
     )
 
     cbf_net.eval()
@@ -97,8 +109,8 @@ def main():
         s = torch.tensor(s_np, dtype=torch.float32, device=device)
         g = torch.tensor(g_np, dtype=torch.float32, device=device)
 
-        # Run INNER_LOOPS steps to reach the current goals
-        for i in range(config.INNER_LOOPS):
+        # Run EVALUATE_LENGTH steps to reach the current goals
+        for i in range(config.EVALUATE_LENGTH):
             with torch.no_grad():
                 # For CBF Network
                 neighbor_features_cbf, indices = core.compute_neighbor_features(
@@ -221,7 +233,7 @@ def main():
 
         # LQR Baseline
         s_lqr = torch.tensor(s_np_ori, dtype=torch.float32, device=device)
-        for i in range(config.INNER_LOOPS):
+        for i in range(config.EVALUATE_LENGTH):
             K = torch.tensor(
                 np.eye(2, 4) + np.eye(2, 4, k=2) * np.sqrt(3),
                 dtype=torch.float32,
@@ -235,7 +247,7 @@ def main():
             s_np_lqr.append(s_np_lqr_current)
 
             neighbor_features_cbf, _ = core.compute_neighbor_features(
-                s, config.DIST_MIN_THRES, config.TOP_K
+                s_lqr, config.DIST_MIN_THRES, config.TOP_K
             )
             ttc_mask = core.ttc_dangerous_mask(
                 config.DIST_MIN_CHECK,
@@ -282,12 +294,6 @@ def main():
                 j_ours = min(j, len(s_np_ours) - 1)
                 state_ours = s_np_ours[j_ours]
                 safety_ours_current = np.squeeze(safety_ours[j_ours])
-
-                print(safety_ours_current)
-
-                print(safety_ours_current.shape)
-                print("")
-
 
                 plot_single_state_with_original(
                     state_ours, g_np, safety_ours_current, s_np_ori, agent_size

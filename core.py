@@ -5,7 +5,12 @@ import config
 import matplotlib.pyplot as plt
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
 print(f"Using device: {device}")
 
 
@@ -116,22 +121,22 @@ def generate_social_mini_game_data():
     hole_y_min = hole_y_center - hole_height / 2
     hole_y_max = hole_y_center + hole_height / 2
 
-    num_agents = 8
+    num_agents = 4
     agent_states = np.zeros((num_agents, 4), dtype=np.float32)
     agent_goals = np.zeros((num_agents, 2), dtype=np.float32)
     agent_offset = 2.0
 
-    y_positions = np.linspace(y_min + agent_offset, y_max - agent_offset, num_agents // 2)
+    y_positions = np.linspace(y_min + agent_offset, y_max - agent_offset, num_agents)
 
     agent_states[:4, 1] = y_positions
-    agent_states[4:, 1] = y_positions
+    # agent_states[4:, 1] = y_positions
     agent_states[:4, 0] = x_min + agent_offset
-    agent_states[4:, 0] = x_max - agent_offset
+    # agent_states[4:, 0] = x_max - agent_offset
     
     agent_goals[:4, 1] = y_positions
-    agent_goals[4:, 1] = y_positions
+    # agent_goals[4:, 1] = y_positions
     agent_goals[:4, 0] = x_max - agent_offset
-    agent_goals[4:, 0] = x_min + agent_offset
+    # agent_goals[4:, 0] = x_min + agent_offset
     
     # Wall Representation
     border_points = generate_border()
@@ -314,6 +319,7 @@ def barrier_loss(h, s, r, ttc, indices):
     return loss_dang, loss_safe, acc_dang, acc_safe
 
 
+# The action network learns to increase the value of the cbf
 def derivative_loss(h, s, a, cbf_net, alpha, indices):
     s_next = s + dynamics(s, a) * config.TIME_STEP
     neighbor_features, _ = compute_neighbor_features(
@@ -389,6 +395,7 @@ def compute_neighbor_features(
     # Select top k closest agents
     if indices is None:
         _, indices = torch.topk(-distances_agents, k=k, dim=1)  # Negative for topk
+
     neighbor_features_agents = s_diff_agents[torch.arange(num_agents).unsqueeze(1), indices]
 
     # Add the 'eye' variable for agents
