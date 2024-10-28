@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 
 
 def plot_single_state_with_wall_separate(
+    ax,  # Add the ax parameter
     agent_state,
     agent_goal,
     safety,
@@ -15,30 +16,27 @@ def plot_single_state_with_wall_separate(
     action_opt=None,
     agent_size=0.5,
 ):
-
-
-    # action = None
-    # action_res = None
-    # action_opt = None
-    
     agent_state_vis = agent_state[:, :2]
 
-    # Plot border and wall points first
-    plt.scatter(
+    # Clear the axis if needed
+    ax.clear()
+
+    # Plot border and wall points
+    ax.scatter(
         border_points[:, 0],
         border_points[:, 1],
         label="Border Points",
         color="blue",
         s=10,
     )
-    plt.scatter(
+    ax.scatter(
         wall_points[:, 0], wall_points[:, 1], label="Wall Points", color="green", s=10
     )
 
     # Plot wall agents if any
     if wall_agent_state is not None:
         wall_state_vis = wall_agent_state[:, :2]
-        plt.scatter(
+        ax.scatter(
             wall_state_vis[:, 0],
             wall_state_vis[:, 1],
             color="grey",
@@ -49,7 +47,7 @@ def plot_single_state_with_wall_separate(
 
     # Plot agent goals
     agent_goal_vis = agent_goal
-    plt.scatter(
+    ax.scatter(
         agent_goal_vis[:, 0],
         agent_goal_vis[:, 1],
         color="deepskyblue",
@@ -65,7 +63,7 @@ def plot_single_state_with_wall_separate(
         for i in range(num_agents):
             trajectory = np.array(trajectories[i])
             if trajectory.shape[0] > 0:
-                plt.plot(
+                ax.plot(
                     trajectory[:, 0],
                     trajectory[:, 1],
                     linestyle="--",
@@ -75,7 +73,7 @@ def plot_single_state_with_wall_separate(
 
     # Plot actions if provided
     if action is not None:
-        plt.quiver(
+        ax.quiver(
             agent_state_vis[:, 0],
             agent_state_vis[:, 1],
             action[:, 0],
@@ -85,7 +83,7 @@ def plot_single_state_with_wall_separate(
             label="Action",
         )
         for i in range(agent_state_vis.shape[0]):
-            plt.text(
+            ax.text(
                 agent_state_vis[i, 0] + 0.05,
                 agent_state_vis[i, 1] + 0.05,
                 f"{action[i]}",
@@ -94,7 +92,7 @@ def plot_single_state_with_wall_separate(
             )
 
     if action_res is not None:
-        plt.quiver(
+        ax.quiver(
             agent_state_vis[:, 0],
             agent_state_vis[:, 1],
             action_res[:, 0],
@@ -104,7 +102,7 @@ def plot_single_state_with_wall_separate(
             label="Action Res",
         )
         for i in range(agent_state_vis.shape[0]):
-            plt.text(
+            ax.text(
                 agent_state_vis[i, 0] + 0.05,
                 agent_state_vis[i, 1] - 0.1,
                 f"{action_res[i]}",
@@ -113,7 +111,7 @@ def plot_single_state_with_wall_separate(
             )
 
     if action_opt is not None:
-        plt.quiver(
+        ax.quiver(
             agent_state_vis[:, 0],
             agent_state_vis[:, 1],
             action_opt[:, 0],
@@ -123,7 +121,7 @@ def plot_single_state_with_wall_separate(
             label="Action Opt",
         )
         for i in range(agent_state_vis.shape[0]):
-            plt.text(
+            ax.text(
                 agent_state_vis[i, 0] + 0.05,
                 agent_state_vis[i, 1] - 0.2,
                 f"{action_opt[i]}",
@@ -132,7 +130,7 @@ def plot_single_state_with_wall_separate(
             )
 
     # Finally, plot the agent states last so they appear on top
-    plt.scatter(
+    ax.scatter(
         agent_state_vis[:, 0],
         agent_state_vis[:, 1],
         color="darkorange",
@@ -141,11 +139,10 @@ def plot_single_state_with_wall_separate(
         alpha=0.6,
     )
 
-    
     collision_indices = np.where(safety)[0]
-    
+
     if collision_indices.size > 0:
-        plt.scatter(
+        ax.scatter(
             agent_state_vis[collision_indices, 0],
             agent_state_vis[collision_indices, 1],
             color="red",
@@ -155,15 +152,15 @@ def plot_single_state_with_wall_separate(
         )
 
     # Set plot limits to match the original data range
-    plt.xlim(0, 10)
-    plt.ylim(0, 10)
-    plt.legend()
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 10)
+    ax.legend()
 
     # Customize axis spines
-    ax = plt.gca()
     for side in ax.spines.keys():
         ax.spines[side].set_linewidth(2)
         ax.spines[side].set_color("grey")
+
 
 
 

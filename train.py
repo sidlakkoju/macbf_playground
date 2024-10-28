@@ -5,7 +5,9 @@ import torch.optim as optim
 import os
 import config
 from core import *
+from tqdm import tqdm
 import sys
+
 
 if torch.cuda.is_available():
     device = torch.device("cuda")
@@ -37,7 +39,7 @@ def train(num_agents):
         device=device
     )
     
-    for step in range(config.TRAIN_STEPS):
+    for step in tqdm(range(config.TRAIN_STEPS)):
         # s_np, g_np = generate_data_np(num_agents, config.DIST_MIN_THRES)
         # s = torch.tensor(s_np, dtype=torch.float32).to(device)
         # g = torch.tensor(g_np, dtype=torch.float32).to(device)

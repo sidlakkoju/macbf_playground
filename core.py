@@ -41,27 +41,28 @@ def generate_data_np(num_agents, dist_min_thres):
 
 # Torch Version
 def generate_data_torch(num_agents, dist_min_thres, device):
-    side_length = torch.sqrt(torch.tensor(max(1.0, num_agents / 8.0), device=device))
-    states = torch.zeros((num_agents, 4), dtype=torch.float32, device=device)
-    goals = torch.zeros((num_agents, 2), dtype=torch.float32, device=device)
-    i = 0
-    while i < num_agents:
-        candidate = torch.rand(2, device=device) * side_length
-        if i > 0:
-            dist_min = torch.norm(states[:i, :2] - candidate, dim=1).min()
-            if dist_min <= dist_min_thres:
-                continue
-        states[i, :2] = candidate
-        i += 1
-    i = 0
-    while i < num_agents:
-        candidate = (torch.rand(2, device=device) - 0.5) + states[i, :2]
-        if i > 0:
-            dist_min = torch.norm(goals[:i] - candidate, dim=1).min()
-            if dist_min <= dist_min_thres:
-                continue
-        goals[i] = candidate
-        i += 1
+    with torch.no_grad():
+        side_length = torch.sqrt(torch.tensor(max(1.0, num_agents / 8.0), device=device))
+        states = torch.zeros((num_agents, 4), dtype=torch.float32, device=device)
+        goals = torch.zeros((num_agents, 2), dtype=torch.float32, device=device)
+        i = 0
+        while i < num_agents:
+            candidate = torch.rand(2, device=device) * side_length
+            if i > 0:
+                dist_min = torch.norm(states[:i, :2] - candidate, dim=1).min()
+                if dist_min <= dist_min_thres:
+                    continue
+            states[i, :2] = candidate
+            i += 1
+        i = 0
+        while i < num_agents:
+            candidate = (torch.rand(2, device=device) - 0.5) + states[i, :2]
+            if i > 0:
+                dist_min = torch.norm(goals[:i] - candidate, dim=1).min()
+                if dist_min <= dist_min_thres:
+                    continue
+            goals[i] = candidate
+            i += 1
     return states, goals
 
 
@@ -127,13 +128,14 @@ def generate_social_mini_game_data():
     agent_offset = 2.0
 
     y_positions = np.linspace(y_min + agent_offset, y_max - agent_offset, num_agents)
+    y_positions_reversed = y_positions[::-1]
 
     agent_states[:4, 1] = y_positions
     # agent_states[4:, 1] = y_positions
     agent_states[:4, 0] = x_min + agent_offset
     # agent_states[4:, 0] = x_max - agent_offset
     
-    agent_goals[:4, 1] = y_positions
+    agent_goals[:4, 1] = y_positions_reversed
     # agent_goals[4:, 1] = y_positions
     agent_goals[:4, 0] = x_max - agent_offset
     # agent_goals[4:, 0] = x_min + agent_offset
@@ -143,7 +145,7 @@ def generate_social_mini_game_data():
     wall_points = generate_wall_hole(wall_x, hole_y_center, hole_height)
 
     # Wall Agents (for input to network)
-    wall_agent_res = config.DIST_MIN_THRES
+    wall_agent_res = config.DIST_MIN_THRES*1.5
     wall_y_positions = np.arange(y_min, y_max + wall_agent_res, wall_agent_res)
     wall_y_positions = wall_y_positions[
         (wall_y_positions < hole_y_min) | (wall_y_positions > hole_y_max)
@@ -380,70 +382,42 @@ def action_loss_np(a, s, g):
     return loss
 
 
-def compute_neighbor_features(
-    s, r, k, wall_agents=None, include_d_norm=False, indices=None
-):
+def compute_neighbor_features(s, r, k, wall_agents=None, include_d_norm=False, indices=None):
     num_agents = s.size(0)
-
     s_diff_agents = s.unsqueeze(1) - s.unsqueeze(0)  # Shape: [num_agents, num_agents, 4]
     distances_agents = (torch.norm(s_diff_agents[:, :, :2], dim=2) + 1e-4)  # Shape: [num_agents, num_agents]
-
+    
     # Exclude self-interactions by setting self-distances to a large value
     eye = torch.eye(num_agents, device=s.device)
     distances_agents = distances_agents + eye * 1e6  # Large value to exclude self
 
+    # Handle Wall Agents (static agents that accept no control input)
+    if wall_agents is not None:
+        s_diff_obstacles = s.unsqueeze(1) - wall_agents.unsqueeze(0)  # Shape: [num_agents, num_obstacles, 4]
+        distances_obstacles = (torch.norm(s_diff_obstacles[:, :, :2], dim=2) + 1e-4)  # Shape: [num_agents, num_obstacles]
+        distances = torch.cat([distances_agents, distances_obstacles], dim=1)
+        s_diff = torch.cat([s_diff_agents, s_diff_obstacles], dim=1)
+    else:
+        distances = distances_agents
+        s_diff = s_diff_agents
+
     # Select top k closest agents
     if indices is None:
-        _, indices = torch.topk(-distances_agents, k=k, dim=1)  # Negative for topk
-
-    neighbor_features_agents = s_diff_agents[torch.arange(num_agents).unsqueeze(1), indices]
+        _, indices = torch.topk(-distances, k=k, dim=1)  # Negative for topk    
+    
+    neighbor_features = s_diff[torch.arange(num_agents).unsqueeze(1), indices]
 
     # Add the 'eye' variable for agents
     eye_agents = eye[torch.arange(num_agents).unsqueeze(1), indices].unsqueeze(2)  # Shape: [num_agents, k, 1]
-    neighbor_features_agents = torch.cat([neighbor_features_agents, eye_agents], dim=2)
+    neighbor_features = torch.cat([neighbor_features, eye_agents], dim=2)
 
     if include_d_norm:
-        d_norm_agents = (
-            distances_agents[torch.arange(num_agents).unsqueeze(1), indices].unsqueeze(2) - r
-        )
-        neighbor_features_agents = torch.cat(
-            [neighbor_features_agents, d_norm_agents], dim=2
-        )
-
-    if wall_agents is not None:
-        num_wall_agents = wall_agents.size(0)
-
-        # Compute s_diff between agents and obstacles
-        s_diff_obstacles = s.unsqueeze(1) - wall_agents.unsqueeze(0)  # Shape: [num_agents, num_obstacles, 4]
-        distances_obstacles = (
-            torch.norm(s_diff_obstacles[:, :, :2], dim=2) + 1e-4
-        )  # Shape: [num_agents, num_obstacles]
-
-        # For obstacles, 'eye' variable is zero
-        eye_obstacles = torch.zeros(
-            num_agents, num_wall_agents, 1, device=s.device
-        )  # Shape: [num_agents, num_obstacles, 1]
-        neighbor_features_obstacles = torch.cat(
-            [s_diff_obstacles, eye_obstacles], dim=2
-        )
-
-        if include_d_norm:
-            d_norm_obstacles = (
-                distances_obstacles.unsqueeze(2) - r
-            )  # Shape: [num_agents, num_obstacles, 1]
-            neighbor_features_obstacles = torch.cat(
-                [neighbor_features_obstacles, d_norm_obstacles], dim=2
-            )
-
-        # Concatenate agent neighbors and obstacle neighbors
-        neighbor_features = torch.cat(
-            [neighbor_features_agents, neighbor_features_obstacles], dim=1
-        )  # Shape: [num_agents, k + num_obstacles, features]
-    else:
-        neighbor_features = neighbor_features_agents
-
+        d_norm_agents = (distances[torch.arange(num_agents).unsqueeze(1), indices].unsqueeze(2) - r)
+        neighbor_features = torch.cat([neighbor_features, d_norm_agents], dim=2)
+    
     # Return neighbor features and indices (indices correspond to agent neighbors)
     return neighbor_features, indices
+
 
 
 """
@@ -451,7 +425,6 @@ NOT USED
 Adapt to create solid walls and obstacles
 Incorporate SMG creation
 """
-
 
 # Not Used
 def generate_obstacle_circle(center, radius, num=12):
