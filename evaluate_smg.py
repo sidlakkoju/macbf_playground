@@ -245,7 +245,12 @@ def main():
             sx, sy = s_np_ori[i, 0], s_np_ori[i, 1]
             gx, gy = g_np_ori[i, 0], g_np_ori[i, 1]
             rx, ry = a_star_planner.planning(sx, sy, gx, gy)
-            rx, ry = dynamic_downsampling(np.array(rx), np.array(ry), 10)
+            rx, ry = dynamic_downsampling(np.array(rx), np.array(ry), 15)
+            # rx, ry = np.expand_dims(rx[::-1], axis = 1), np.expand_dims(ry[::-1], axis = 1)
+            # trajectory = np.concatenate((rx, ry), axis = 1)
+            # print(f'trajectory shape: {trajectory.shape}')
+            # print(f'trajectory: {trajectory}')
+            # exit(1)
             rx, ry = rx.tolist(), ry.tolist()
             trajectory = list(zip(rx, ry))
             trajectories.append(trajectory)
@@ -253,7 +258,7 @@ def main():
         trajectories_lqr = copy.deepcopy(trajectories)
         initial_trajectories = copy.deepcopy(trajectories)
 
-        for i in tqdm(range(config.EVALUATE_LENGTH)):
+        for i in tqdm(range(config.EVALUATE_LENGTH), desc="MaCBF Evaluation"):
             for agent_idx in range(num_agents):
                 agent_pos = s_np[agent_idx, :2]
                 traj = trajectories[agent_idx]
@@ -359,6 +364,7 @@ def main():
 
             if args.vis:
                 if (np.mean(np.linalg.norm(s_np[:, :2] - g_np, axis=1)) < config.DIST_MIN_CHECK):
+                    print("Break condition")
                     break
 
         dist_errors.append(np.mean(np.linalg.norm(s_np[:, :2] - g_np, axis=1)))
@@ -375,7 +381,7 @@ def main():
         s_lqr = torch.tensor(s_np_ori, dtype=torch.float32, device=device)
         s_np_lqr_current = s_np_ori.copy()
         g_np_lqr = g_np_ori.copy()
-        for i in tqdm(range(config.EVALUATE_LENGTH)):
+        for i in tqdm(range(config.EVALUATE_LENGTH), desc="Basline LQR Evaluation"):
 
             # Update the goal for each agent
             for agent_idx in range(num_agents):
