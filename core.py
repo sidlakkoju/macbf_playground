@@ -113,7 +113,17 @@ def generate_border():
     return border_points
 
 
-def generate_social_mini_game_data():
+"""Rotates points by theta around a given origin."""
+def rotate_points(points, theta, origin):
+    cos_theta, sin_theta = np.cos(theta), np.sin(theta)
+    rotation_matrix = np.array([[cos_theta, -sin_theta], [sin_theta, cos_theta]])
+    # Shift points to origin, rotate, and shift back
+    translated_points = points - origin
+    rotated_points = np.dot(translated_points, rotation_matrix) + origin
+    return rotated_points
+
+
+def generate_social_mini_game_data(theta):
     x_min, x_max = 0.0, 10.0
     y_min, y_max = 0.0, 10.0
     wall_x = 5.0
@@ -141,11 +151,11 @@ def generate_social_mini_game_data():
     # agent_goals[4:, 0] = x_min + agent_offset
     
     # Wall Representation
-    border_points = generate_border()
-    wall_points = generate_wall_hole(wall_x, hole_y_center, hole_height)
+    border_points = generate_border()  # Assuming this is an Nx2 array of (x, y) points
+    wall_points = generate_wall_hole(wall_x, hole_y_center, hole_height)  # Assuming this is also an Nx2 array
 
     # Wall Agents (for input to network)
-    wall_agent_res = config.DIST_MIN_THRES*1.5
+    wall_agent_res = config.DIST_MIN_THRES * 1.5
     wall_y_positions = np.arange(y_min, y_max + wall_agent_res, wall_agent_res)
     wall_y_positions = wall_y_positions[
         (wall_y_positions < hole_y_min) | (wall_y_positions > hole_y_max)
@@ -158,6 +168,19 @@ def generate_social_mini_game_data():
     wall_agent_states[:, 2:] = 0.0
     wall_agent_goals[:, 0] = wall_x
     wall_agent_goals[:, 1] = wall_y_positions
+
+    # Center of rotation
+    origin = np.array([(x_max - x_min) / 2, (y_max - y_min) / 2])
+
+    # Rotate agent and wall agent positions around the origin
+    agent_states[:, :2] = rotate_points(agent_states[:, :2], theta, origin)
+    agent_goals = rotate_points(agent_goals, theta, origin)
+    wall_agent_states[:, :2] = rotate_points(wall_agent_states[:, :2], theta, origin)
+    wall_agent_goals = rotate_points(wall_agent_goals, theta, origin)
+    
+    # Rotate border and wall points around the origin
+    border_points = rotate_points(border_points, theta, origin)
+    wall_points = rotate_points(wall_points, theta, origin)
 
     return (
         agent_states,
