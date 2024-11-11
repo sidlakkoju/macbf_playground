@@ -19,9 +19,9 @@ print(f"Using device: {device}")
 
 # Save the model checkpoints
 def save_model(model, model_name, step):
-    if not os.path.exists('checkpoints'):
-        os.makedirs('checkpoints')
-    torch.save(model.state_dict(), f'checkpoints/{model_name}_step_{step}.pth')
+    if not os.path.exists('checkpoints_barrier_eval'):
+        os.makedirs('checkpoints_barrier_eval')
+    torch.save(model.state_dict(), f'checkpoints_barrier_eval/{model_name}_step_{step}.pth')
 
 
 def train(num_agents):
