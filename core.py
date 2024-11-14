@@ -132,7 +132,7 @@ def generate_social_mini_game_data(theta):
     hole_y_min = hole_y_center - hole_height / 2
     hole_y_max = hole_y_center + hole_height / 2
 
-    num_agents = 4
+    num_agents = 2
     agent_states = np.zeros((num_agents, 4), dtype=np.float32)
     agent_goals = np.zeros((num_agents, 2), dtype=np.float32)
     agent_offset = 2.0
@@ -140,14 +140,14 @@ def generate_social_mini_game_data(theta):
     y_positions = np.linspace(y_min + agent_offset, y_max - agent_offset, num_agents)
     y_positions_reversed = y_positions[::-1]
 
-    agent_states[:4, 1] = y_positions
+    agent_states[:num_agents, 1] = y_positions
     # agent_states[4:, 1] = y_positions
-    agent_states[:4, 0] = x_min + agent_offset
+    agent_states[:num_agents, 0] = x_min + agent_offset
     # agent_states[4:, 0] = x_max - agent_offset
     
-    agent_goals[:4, 1] = y_positions_reversed
+    agent_goals[:num_agents, 1] = y_positions_reversed
     # agent_goals[4:, 1] = y_positions
-    agent_goals[:4, 0] = x_max - agent_offset
+    agent_goals[:num_agents, 0] = x_max - agent_offset
     # agent_goals[4:, 0] = x_min + agent_offset
     
     # Wall Representation
@@ -246,13 +246,22 @@ class ActionNetwork(nn.Module):
         return a
 
 
+'''
+Dynamics:
+    x_{k+1} = x_k + vx_k * T_s + 0.5 * ax_k * T_s^2
+    y_{k+1} = y_k + vy_k * T_s + 0.5 * ay_k * T_s^2
+    vx_{k+1} = vx_k + ax_k * T_s
+    vy_{k+1} = vy_k + ay_k * T_s
+'''
 def dynamics(s, a):
     dsdt = torch.cat([s[:, 2:], a], dim=1)
     return dsdt
 
 
 def take_step_obstacles(s, a, wall_agents=None):
+    
     s_next = s + dynamics(s, a) * config.TIME_STEP
+    # s_next[:, :2] = 0.5*a*config.TIME_STEP**2 + s_next[:, :2]
 
     neighbor_features_next, _ = compute_neighbor_features(
         s_next,
@@ -409,38 +418,36 @@ def compute_neighbor_features(s, r, k, wall_agents=None, include_d_norm=False, i
     num_agents = s.size(0)
     s_diff_agents = s.unsqueeze(1) - s.unsqueeze(0)  # Shape: [num_agents, num_agents, 4]
     distances_agents = (torch.norm(s_diff_agents[:, :, :2], dim=2) + 1e-4)  # Shape: [num_agents, num_agents]
-    
-    # Exclude self-interactions by setting self-distances to a large value
     eye = torch.eye(num_agents, device=s.device)
-    distances_agents = distances_agents + eye * 1e6  # Large value to exclude self
+    distances_agents = distances_agents + eye * 1e6  # Remove this line
 
-    # Handle Wall Agents (static agents that accept no control input)
+    # Handle Wall Agents
     if wall_agents is not None:
-        s_diff_obstacles = s.unsqueeze(1) - wall_agents.unsqueeze(0)  # Shape: [num_agents, num_obstacles, 4]
-        distances_obstacles = (torch.norm(s_diff_obstacles[:, :, :2], dim=2) + 1e-4)  # Shape: [num_agents, num_obstacles]
+        s_diff_obstacles = s.unsqueeze(1) - wall_agents.unsqueeze(0)  # Shape: [num_agents, num_wall_agents, 4]
+        distances_obstacles = (torch.norm(s_diff_obstacles[:, :, :2], dim=2) + 1e-4)  # Shape: [num_agents, num_wall_agents]
         distances = torch.cat([distances_agents, distances_obstacles], dim=1)
         s_diff = torch.cat([s_diff_agents, s_diff_obstacles], dim=1)
     else:
         distances = distances_agents
         s_diff = s_diff_agents
-
+    
     # Select top k closest agents
     if indices is None:
-        _, indices = torch.topk(-distances, k=k, dim=1)  # Negative for topk    
+        _, indices = torch.topk(-distances, k=k, dim=1)  # Negative for topk
     
     neighbor_features = s_diff[torch.arange(num_agents).unsqueeze(1), indices]
-
-    # Add the 'eye' variable for agents
-    eye_agents = eye[torch.arange(num_agents).unsqueeze(1), indices].unsqueeze(2)  # Shape: [num_agents, k, 1]
-    neighbor_features = torch.cat([neighbor_features, eye_agents], dim=2)
-
+    
+    # Create a type indicator: 1 for self-interaction, 0 otherwise
+    agent_indices = torch.arange(num_agents).unsqueeze(1).to(s.device)
+    type_indicator = (indices == agent_indices).unsqueeze(2).float()
+    neighbor_features = torch.cat([neighbor_features, type_indicator], dim=2)
+    
     if include_d_norm:
         d_norm_agents = (distances[torch.arange(num_agents).unsqueeze(1), indices].unsqueeze(2) - r)
-        neighbor_features = torch.cat([neighbor_features, d_norm_agents], dim=2)
-    
+        neighbor_features = torch.cat([neighbor_features, d_norm_agents], dim=2)    
     # Return neighbor features and indices (indices correspond to agent neighbors)
+    
     return neighbor_features, indices
-
 
 
 """

@@ -12,21 +12,18 @@ import config
     wall_agent_goals,
     border_points,
     wall_points,
-) = generate_social_mini_game_data()
+) = generate_social_mini_game_data(0)
 
 agent_states_torch = torch.tensor(agent_states, dtype=torch.float32, device=device)
 wall_agent_states_torch = torch.tensor(
     wall_agent_states, dtype=torch.float32, device=device
 )
 
-
 action_torch = torch.zeros(
     (agent_states_torch.shape[0], 2), dtype=torch.float32, device=device
 )
 
-
 key_pressed = False
-
 
 def on_key_press(event):
     global action_torch, key_pressed
@@ -49,10 +46,11 @@ def on_key_press(event):
     else:
         action_torch[:] = torch.tensor([0, 0], dtype=torch.float32, device=device)
 
+# Set up the figure and axis once outside the loop
+fig, ax = plt.subplots()
+fig.canvas.mpl_connect("key_press_event", on_key_press)
 
 while True:
-    plt.clf()
-
     # dsdt = dynamics(agent_states_torch, action_torch)
     # agent_states_torch = agent_states_torch + dsdt * config.TIME_STEP
 
@@ -75,7 +73,9 @@ while True:
 
     agent_states_np = agent_states_torch.cpu().numpy()
 
+    # Pass the axis (ax) to the plotting function
     plot_single_state_with_wall_separate(
+        ax=ax,
         agent_state=agent_states_np,
         agent_goal=agent_goals,
         safety=collision_check,
@@ -85,13 +85,11 @@ while True:
         agent_size=30,
     )
 
-    fig = plt.gcf()
-    fig.canvas.mpl_connect("key_press_event", on_key_press)
-
     if not key_pressed:
         action_torch[:] = torch.tensor([0, 0], dtype=torch.float32, device=device)
 
     key_pressed = False
 
+    # Update the display
     fig.canvas.draw()
     plt.pause(config.TIME_STEP)
