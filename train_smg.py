@@ -159,7 +159,7 @@ def train():
             a = action_net(s, g, neighbor_features_action)
 
             # Loss calculations
-            loss_dang, loss_safe, acc_dang, acc_safe = barrier_loss(h, s, config.DIST_MIN_THRES, config.TIME_TO_COLLISION, indices)
+            loss_dang, loss_safe, acc_dang, acc_safe = barrier_loss(h, s, config.DIST_MIN_THRES, config.TIME_TO_COLLISION, indices, obs)
             loss_dang_deriv, loss_safe_deriv, acc_dang_deriv, acc_safe_deriv = derivative_loss(h, s, a, cbf_net, config.ALPHA_CBF, indices, obs)
             loss_action = action_loss(a, s, g, state_gain)
             loss_distance = distance_loss(s, g)
