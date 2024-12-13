@@ -123,31 +123,35 @@ def rotate_points(points, theta, origin):
     return rotated_points
 
 
-def generate_social_mini_game_data(theta):
-    x_min, x_max = 0.0, 10.0
-    y_min, y_max = 0.0, 10.0
+def generate_social_mini_game_data(num_agents = 2):
+    # config.X_MIN, config.X_MAX = 0.0, 10.0
+    # config.Y_MIN, config.Y_MAX = 0.0, 10.0
     wall_x = 5.0
     hole_y_center = 5.0
-    hole_height = 0.2
+    hole_height = 0.35
     hole_y_min = hole_y_center - hole_height / 2
     hole_y_max = hole_y_center + hole_height / 2
-
-    num_agents = 2
+    
     agent_states = np.zeros((num_agents, 4), dtype=np.float32)
     agent_goals = np.zeros((num_agents, 2), dtype=np.float32)
     agent_offset = 2.0
 
-    y_positions = np.linspace(y_min + agent_offset, y_max - agent_offset, num_agents)
-    y_positions_reversed = y_positions[::-1]
+    y_positions = np.linspace(config.Y_MIN + agent_offset, config.Y_MAX - agent_offset, num_agents)
+    
+    if num_agents > 1:
+        y_positions_reversed = y_positions[::-1]
+    else:
+        y_positions_reversed = np.array([config.Y_MAX - agent_offset])
+
 
     agent_states[:num_agents, 1] = y_positions
     # agent_states[4:, 1] = y_positions
-    agent_states[:num_agents, 0] = x_min + agent_offset
+    agent_states[:num_agents, 0] = config.X_MIN + 1
     # agent_states[4:, 0] = x_max - agent_offset
     
     agent_goals[:num_agents, 1] = y_positions_reversed
     # agent_goals[4:, 1] = y_positions
-    agent_goals[:num_agents, 0] = x_max - agent_offset
+    agent_goals[:num_agents, 0] = config.X_MAX - 1
     # agent_goals[4:, 0] = x_min + agent_offset
     
     # Wall Representation
@@ -156,7 +160,7 @@ def generate_social_mini_game_data(theta):
 
     # Wall Agents (for input to network)
     wall_agent_res = config.DIST_MIN_THRES * 1.5
-    wall_y_positions = np.arange(y_min, y_max + wall_agent_res, wall_agent_res)
+    wall_y_positions = np.arange(config.Y_MIN, config.Y_MAX + wall_agent_res, wall_agent_res)
     wall_y_positions = wall_y_positions[
         (wall_y_positions < hole_y_min) | (wall_y_positions > hole_y_max)
     ]
@@ -169,8 +173,18 @@ def generate_social_mini_game_data(theta):
     wall_agent_goals[:, 0] = wall_x
     wall_agent_goals[:, 1] = wall_y_positions
 
-    # Center of rotation
-    origin = np.array([(x_max - x_min) / 2, (y_max - y_min) / 2])
+    return (
+        agent_states,
+        agent_goals,
+        wall_agent_states,
+        wall_agent_goals,
+        border_points,
+        wall_points,
+    )
+
+
+def rotate_environment(theta, agent_states, agent_goals, wall_agent_states, wall_agent_goals, border_points, wall_points, trajectories):
+    origin = np.array([(config.X_MAX - config.X_MIN) / 2, (config.Y_MAX - config.Y_MIN) / 2])
 
     # Rotate agent and wall agent positions around the origin
     agent_states[:, :2] = rotate_points(agent_states[:, :2], theta, origin)
@@ -182,6 +196,10 @@ def generate_social_mini_game_data(theta):
     border_points = rotate_points(border_points, theta, origin)
     wall_points = rotate_points(wall_points, theta, origin)
 
+    # Rotate Trajectories
+    for traj_idx in range(len(trajectories)):
+        trajectories[traj_idx] = rotate_points(trajectories[traj_idx], theta, origin)
+        
     return (
         agent_states,
         agent_goals,
@@ -189,7 +207,36 @@ def generate_social_mini_game_data(theta):
         wall_agent_goals,
         border_points,
         wall_points,
+        trajectories,
     )
+
+
+""" Trajectory Utility Functions """
+def calculate_curvature(rx, ry):
+    rx, ry = np.array(rx), np.array(ry)
+    dx = np.gradient(rx)
+    dy = np.gradient(ry)
+    ddx = np.gradient(dx)
+    ddy = np.gradient(dy)
+    curvature = np.abs(ddx * dy - dx * ddy) / (dx**2 + dy**2)**1.5
+    curvature = np.nan_to_num(curvature)
+    return curvature
+
+
+def dynamic_downsampling(rx, ry, target_num_points):
+    if len(rx) <= 1:
+        return rx, ry
+    curvature = calculate_curvature(rx, ry)
+    curvature_sum = np.sum(curvature)
+    curvature_norm = curvature / curvature_sum if curvature_sum != 0 else curvature
+    cumulative_sum = np.cumsum(curvature_norm)
+    u = np.linspace(0, 1, target_num_points)
+    resample_indices = np.searchsorted(cumulative_sum, u, side='right')
+    resample_indices = np.clip(resample_indices, 0, len(rx) - 1)
+    resample_indices = np.unique(np.concatenate(([0], resample_indices, [len(rx) - 1])))
+    rx_downsampled = rx[resample_indices]
+    ry_downsampled = ry[resample_indices]
+    return rx_downsampled, ry_downsampled
 
 
 # Input: [num_agents, k, 6], 6: [del_x, del_y , del_vx, del_vy, identity, d_norm]
@@ -334,13 +381,9 @@ def ttc_dangerous_mask(r, ttc, neighbor_features):
     return ttc_dangerous  # Shape: [num_agents, k + num_obstacles]
 
 
-def barrier_loss(h, s, r, ttc, indices):
-    neighbor_features_cbf, _ = compute_neighbor_features(
-        s, config.DIST_MIN_THRES, config.TOP_K
-    )
-    mask = ttc_dangerous_mask(
-        config.DIST_MIN_CHECK, ttc, neighbor_features_cbf
-    )
+def barrier_loss(h, s, r, ttc, indices = None, obs = None):
+    neighbor_features_cbf, _ = compute_neighbor_features(s, r, config.TOP_K, wall_agents=obs, indices=indices)
+    mask = ttc_dangerous_mask(config.DIST_MIN_CHECK, ttc, neighbor_features_cbf)
     h = h.squeeze(2)  # If h has shape [num_agents, k, 1]
     h = h.view(-1)  # Shape: [num_agents * k]
     mask = mask.view(-1)  # Shape: [num_agents * k]
@@ -354,12 +397,13 @@ def barrier_loss(h, s, r, ttc, indices):
 
 
 # The action network learns to increase the value of the cbf
-def derivative_loss(h, s, a, cbf_net, alpha, indices):
+def derivative_loss(h, s, a, cbf_net, alpha, indices, obs = None):
     s_next = s + dynamics(s, a) * config.TIME_STEP
     neighbor_features, _ = compute_neighbor_features(
         s_next,
         config.DIST_MIN_THRES,
         config.TOP_K,
+        wall_agents=obs, 
         include_d_norm=True,
         indices=indices,
     )
@@ -367,7 +411,7 @@ def derivative_loss(h, s, a, cbf_net, alpha, indices):
     deriv = (h_next - h) + config.TIME_STEP * alpha * h
     deriv = deriv.view(-1)
     neighbor_features_cbf, _ = compute_neighbor_features(
-        s, config.DIST_MIN_THRES, config.TOP_K
+        s, config.DIST_MIN_THRES, config.TOP_K, wall_agents=obs
     )
     dang_mask = ttc_dangerous_mask(
         config.DIST_MIN_CHECK, config.TIME_TO_COLLISION_CHECK, neighbor_features_cbf
@@ -399,6 +443,11 @@ def action_loss(a, s, g, state_gain):
     loss = torch.mean(norm_diff)
     return loss
 
+def distance_loss(s, g):
+    xy_dif = g - s[:, :2]
+    dist = torch.linalg.norm(xy_dif, dim=1)
+    loss = torch.mean(dist)
+    return loss
 
 # Never used
 def action_loss_np(a, s, g):

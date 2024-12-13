@@ -1,4 +1,3 @@
-import sys
 import os
 import time
 import argparse
@@ -38,12 +37,11 @@ print(f"Using device: {device}")
 UTILITY FUNCTIONS
 '''
 
-
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, default=None)
     parser.add_argument("--model_step", type=int, default=None)
-    parser.add_argument("--vis", type=int, default=0)
+    parser.add_argument("--vis", type=int, default=1)
     parser.add_argument("--gpu", type=str, default="0")
     args = parser.parse_args()
     return args
@@ -58,31 +56,6 @@ def print_accuracy(accuracy_lists):
     print("Accuracy: {}".format(acc_list))
 
 
-def calculate_curvature(rx, ry):
-    rx, ry = np.array(rx), np.array(ry)
-    dx = np.gradient(rx)
-    dy = np.gradient(ry)
-    ddx = np.gradient(dx)
-    ddy = np.gradient(dy)
-    curvature = np.abs(ddx * dy - dx * ddy) / (dx**2 + dy**2)**1.5
-    curvature = np.nan_to_num(curvature)
-    return curvature
-
-
-def dynamic_downsampling(rx, ry, target_num_points):
-    curvature = calculate_curvature(rx, ry)
-    curvature_sum = np.sum(curvature)
-    curvature_norm = curvature / curvature_sum if curvature_sum != 0 else curvature
-    cumulative_sum = np.cumsum(curvature_norm)
-    u = np.linspace(0, 1, target_num_points)
-    resample_indices = np.searchsorted(cumulative_sum, u, side='right')
-    resample_indices = np.clip(resample_indices, 0, len(rx) - 1)
-    resample_indices = np.unique(np.concatenate(([0], resample_indices, [len(rx) - 1])))
-    rx_downsampled = rx[resample_indices]
-    ry_downsampled = ry[resample_indices]
-    return rx_downsampled, ry_downsampled
-
-
 
 '''
 MAIN LOOP
@@ -93,8 +66,8 @@ def main():
     args = parse_args()
     cbf_net = CBFNetwork().to(device)
     action_net = ActionNetwork().to(device)
-    cbf_net.load_state_dict(torch.load('checkpoints_lambda/cbf_net_step_70000.pth', weights_only=True, map_location=device))
-    action_net.load_state_dict(torch.load('checkpoints_lambda/action_net_step_70000.pth', weights_only=True, map_location=device))
+    cbf_net.load_state_dict(torch.load('checkpoints_barrier_eval/cbf_net_step_70000.pth', weights_only=True, map_location=device))
+    action_net.load_state_dict(torch.load('checkpoints_barrier_eval/action_net_step_70000.pth', weights_only=True, map_location=device))
     cbf_net.eval()
     action_net.eval()
 
@@ -140,28 +113,12 @@ def main():
             )
             ax_lqr.set_title("LQR: Safety Rate = {:.3f}".format(np.mean(safety_ratios_epoch_lqr)), fontsize=14)
 
-    for istep in range(1):
+    for istep in range(config.EVALUATE_STEPS):
         start_time = time.time()
         safety_info = []
         safety_info_baseline = []
-        theta = random.random() * 2 * math.pi
-        s_np_ori, g_np_ori, obs_np, obs_g_np, border_points_np, wall_points_np = generate_social_mini_game_data(theta=theta)
-        s_np, g_np = np.copy(s_np_ori), np.copy(g_np_ori)
-        init_dist_errors.append(np.mean(np.linalg.norm(s_np[:, :2] - g_np, axis=1)))
-        s = torch.tensor(s_np, dtype=torch.float32, device=device)
-        g = torch.tensor(g_np, dtype=torch.float32, device=device)
-        obs = torch.tensor(obs_np, dtype=torch.float32, device=device)
-
-        s_np_ours = []
-        a_np_ours = []
-        a_res_np_ours = []
-        a_opt_np_ours = []
-        s_np_lqr = []
-        a_np_lqr = []
-        safety_ours = []
-        safety_lqr = []
-        collision_check_ours = []
-        collision_check_lqr = []
+        
+        s_np_ori, g_np_ori, obs_np, obs_g_np, border_points_np, wall_points_np = generate_social_mini_game_data()
 
         ox = wall_points_np[:, 0].tolist() + border_points_np[:, 0].tolist()
         oy = wall_points_np[:, 1].tolist() + border_points_np[:, 1].tolist()
@@ -180,6 +137,28 @@ def main():
             rx, ry = np.expand_dims(rx[::-1], axis=1), np.expand_dims(ry[::-1], axis=1)
             trajectory = np.concatenate((rx, ry), axis=1)
             trajectories.append(trajectory)
+
+        theta = random.random() * 2 * math.pi
+        theta = math.pi*(0.25)
+
+        s_np_ori, g_np_ori, obs_np, obs_g_np, border_points_np, wall_points_np, trajectories = rotate_environment(theta, s_np_ori, g_np_ori, obs_np, obs_g_np, border_points_np, wall_points_np, trajectories)
+
+        s_np, g_np = np.copy(s_np_ori), np.copy(g_np_ori)
+        init_dist_errors.append(np.mean(np.linalg.norm(s_np[:, :2] - g_np, axis=1)))
+        s = torch.tensor(s_np, dtype=torch.float32, device=device)
+        g = torch.tensor(g_np, dtype=torch.float32, device=device)
+        obs = torch.tensor(obs_np, dtype=torch.float32, device=device)
+
+        s_np_ours = []
+        a_np_ours = []
+        a_res_np_ours = []
+        a_opt_np_ours = []
+        s_np_lqr = []
+        a_np_lqr = []
+        safety_ours = []
+        safety_lqr = []
+        collision_check_ours = []
+        collision_check_lqr = []
 
         trajectories_lqr = copy.deepcopy(trajectories)
         # initial_trajectories = copy.deepcopy(trajectories)
@@ -206,18 +185,18 @@ def main():
                         else:
                             next_waypoint = traj[idx]
                         trajectories_idx_macbf[agent_idx] = idx
-                    elif dist_to_next > config.MAX_THRESHOLD:
-                        # Replan the trajectory
-                        sx, sy = agent_pos[0], agent_pos[1]
-                        gx, gy = g_np_ori[agent_idx, 0], g_np_ori[agent_idx, 1]
-                        rx, ry = a_star_planner.planning(sx, sy, gx, gy)
-                        rx, ry = dynamic_downsampling(np.array(rx), np.array(ry), 10)
-                        rx, ry = np.expand_dims(rx[::-1], axis=1), np.expand_dims(ry[::-1], axis=1)
-                        trajectory = np.concatenate((rx, ry), axis=1)
-                        trajectories[agent_idx] = trajectory
-                        trajectories_idx_macbf[agent_idx] = 0
-                        idx = 0
-                        next_waypoint = traj[idx]
+                    # elif dist_to_next > config.MAX_THRESHOLD:
+                    #     # Replan the trajectory
+                    #     sx, sy = agent_pos[0], agent_pos[1]
+                    #     gx, gy = g_np_ori[agent_idx, 0], g_np_ori[agent_idx, 1]
+                    #     rx, ry = a_star_planner.planning(sx, sy, gx, gy)
+                    #     rx, ry = dynamic_downsampling(np.array(rx), np.array(ry), 10)
+                    #     rx, ry = np.expand_dims(rx[::-1], axis=1), np.expand_dims(ry[::-1], axis=1)
+                    #     trajectory = np.concatenate((rx, ry), axis=1)
+                    #     trajectories[agent_idx] = trajectory
+                    #     trajectories_idx_macbf[agent_idx] = 0
+                    #     idx = 0
+                    #     next_waypoint = traj[idx]
                 g_np[agent_idx, :] = next_waypoint
 
 
@@ -262,7 +241,7 @@ def main():
             safety_ratios_epoch.append(safety_ratio_mean)
 
             if args.vis:
-                if (np.mean(np.linalg.norm(s_np[:, :2] - g_np, axis=1)) < config.DIST_MIN_CHECK):
+                if (np.mean(np.linalg.norm(s_np[:, :2] - g_np_ori, axis=1)) < config.DIST_MIN_CHECK):
                     print("Break condition")
                     break
 
@@ -300,18 +279,18 @@ def main():
                         else:
                             next_waypoint = traj[idx]
                         trajectories_idx_lqr[agent_idx] = idx
-                    elif dist_to_next > config.MAX_THRESHOLD:
-                        # Replan the trajectory
-                        sx, sy = agent_pos[0], agent_pos[1]
-                        gx, gy = g_np_ori[agent_idx, 0], g_np_ori[agent_idx, 1]
-                        rx, ry = a_star_planner.planning(sx, sy, gx, gy)
-                        rx, ry = dynamic_downsampling(np.array(rx), np.array(ry), 10)
-                        rx, ry = np.expand_dims(rx[::-1], axis=1), np.expand_dims(ry[::-1], axis=1)
-                        trajectory = np.concatenate((rx, ry), axis=1)
-                        trajectories_lqr[agent_idx] = trajectory
-                        trajectories_idx_lqr[agent_idx] = 0
-                        idx = 0
-                        next_waypoint = traj[idx]
+                    # elif dist_to_next > config.MAX_THRESHOLD:
+                    #     # Replan the trajectory
+                    #     sx, sy = agent_pos[0], agent_pos[1]
+                    #     gx, gy = g_np_ori[agent_idx, 0], g_np_ori[agent_idx, 1]
+                    #     rx, ry = a_star_planner.planning(sx, sy, gx, gy)
+                    #     rx, ry = dynamic_downsampling(np.array(rx), np.array(ry), 10)
+                    #     rx, ry = np.expand_dims(rx[::-1], axis=1), np.expand_dims(ry[::-1], axis=1)
+                    #     trajectory = np.concatenate((rx, ry), axis=1)
+                    #     trajectories_lqr[agent_idx] = trajectory
+                    #     trajectories_idx_lqr[agent_idx] = 0
+                    #     idx = 0
+                    #     next_waypoint = traj[idx]
                 g_np_lqr[agent_idx, :] = next_waypoint
 
 
@@ -333,7 +312,7 @@ def main():
             safety_ratio_mean = np.mean(safety_ratio == 1)
             safety_ratios_epoch_lqr.append(safety_ratio_mean)
 
-            if (np.mean(np.linalg.norm(s_np_lqr_current[:, :2] - g_np_lqr, axis=1)) < config.DIST_MIN_CHECK / 3):
+            if (np.mean(np.linalg.norm(s_np_lqr_current[:, :2] - g_np_ori, axis=1)) < config.DIST_MIN_CHECK / 3):
                 break
 
         safety_reward_baseline.append(np.mean(np.sum(np.concatenate(safety_info_baseline, axis=0) - 1, axis=0)))

@@ -1,28 +1,28 @@
-import numpy as np
-from vis import *
-from core import *
-
-
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation, FFMpegWriter
+import os
+import re
 
 
 
+BASE_DIR = 'checkpoints_lambda_1'
 
-fig = plt.figure(figsize=(10, 10))
-ax = fig.add_subplot(111)
 
-agent_states, agent_goals, wall_agent_states, wall_agent_goals, border_points, wall_points = generate_social_mini_game_data(theta=0.7)
+def extract_numbers_from_files(directory, max_cbf=None, max_action=None):
+    for filename in os.listdir(directory):
+        match_cbf = re.search(r"cbf_net_step_(\d+)", filename)
+        match_action = re.search(r"action_net_step_(\d+)", filename)
+        if match_cbf:
+            number = int(match_cbf.group(1))
+            print(f"File: {filename}, Number: {number}")
+            max_cbf = max(max_cbf, number) if max_cbf else number
+        if match_action:
+            number = int(match_action.group(1))
+            print(f"File: {filename}, Number: {number}")
+            max_action = max(max_action, number) if max_action else number
+        
+    return max_cbf, max_action
 
-plot_single_state_with_wall_separate(
-                ax,
-                agent_states,
-                agent_goals,
-                0,
-                border_points,
-                wall_points,
-                wall_agent_state=wall_agent_states,
-                agent_size=30,
-            )
 
-plt.show()
+max_cbf, max_action = extract_numbers_from_files(BASE_DIR)
+
+print(f"Max CBF: {max_cbf}")
+print(f"Max Action: {max_action}")

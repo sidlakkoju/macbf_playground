@@ -12,8 +12,6 @@ import config
 
 from vis import *
 
-from tqdm import tqdm
-
 
 if torch.cuda.is_available():
     device = torch.device("cuda")
@@ -62,9 +60,13 @@ def main():
     # action_net.load_state_dict(
     #     torch.load('checkpoints_mps/action_net_step_19000.pth', weights_only=True)
     # )
-    
-    cbf_net.load_state_dict(torch.load('checkpoints_barrier_eval/cbf_net_step_70000.pth', weights_only=True, map_location=device))
-    action_net.load_state_dict(torch.load('checkpoints_barrier_eval/action_net_step_70000.pth', weights_only=True, map_location=device))
+
+    cbf_net.load_state_dict(
+        torch.load('checkpoints_lambda/cbf_net_step_70000.pth', weights_only=True, map_location=device)
+    )
+    action_net.load_state_dict(
+        torch.load('checkpoints_lambda/action_net_step_70000.pth', weights_only=True, map_location=device)
+    )
 
     cbf_net.eval()
     action_net.eval()
@@ -108,7 +110,7 @@ def main():
         g = torch.tensor(g_np, dtype=torch.float32, device=device)
 
         # Run EVALUATE_LENGTH steps to reach the current goals
-        for i in tqdm(range(config.EVALUATE_LENGTH)):
+        for i in range(config.EVALUATE_LENGTH):
             with torch.no_grad():
                 # For CBF Network
                 neighbor_features_cbf, indices = core.compute_neighbor_features(
