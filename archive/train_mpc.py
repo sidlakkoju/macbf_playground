@@ -1,13 +1,13 @@
-import os
-import re
+import numpy as np
 import torch
+import torch.nn as nn
 import torch.optim as optim
-from core import *
+import os
 import config
+from core import *
 from tqdm import tqdm
+import sys
 
-# BASE_DIR = 'checkpoints_barrier_eval'
-BASE_DIR = 'testing'
 
 if torch.cuda.is_available():
     device = torch.device("cuda")
@@ -17,35 +17,11 @@ else:
     device = torch.device("cpu")
 print(f"Using device: {device}")
 
-
-def extract_existing_model_path(directory=BASE_DIR):
-    max_cbf = None
-    max_action = None
-    for filename in os.listdir(directory):
-        match_cbf = re.search(r"cbf_net_step_(\d+)", filename)
-        match_action = re.search(r"action_net_step_(\d+)", filename)
-        if match_cbf:
-            number = int(match_cbf.group(1))
-            max_cbf = max(max_cbf, number) if max_cbf is not None else number
-        if match_action:
-            number = int(match_action.group(1))
-            max_action = max(max_action, number) if max_action is not None else number
-    return max_cbf, max_action
-
-
-def load_model(model, model_name, step, base_dir=BASE_DIR):
-    checkpoint_path = f"{base_dir}/{model_name}_step_{step}.pth"
-    if os.path.exists(checkpoint_path):
-        print(f"Loading {model_name} from {checkpoint_path}")
-        model.load_state_dict(torch.load(checkpoint_path, map_location=device))
-    else:
-        print(f"No checkpoint found for {model_name} at step {step}")
-
-
-def save_model(model, model_name, step, base_dir=BASE_DIR):
-    if not os.path.exists(base_dir):
-        os.makedirs(base_dir)
-    torch.save(model.state_dict(), f"{base_dir}/{model_name}_step_{step}.pth")
+# Save the model checkpoints
+def save_model(model, model_name, step):
+    if not os.path.exists('checkpoints_barrier_eval'):
+        os.makedirs('checkpoints')
+    torch.save(model.state_dict(), f'checkpoints/{model_name}_step_{step}.pth')
 
 
 def train(num_agents):
@@ -62,49 +38,46 @@ def train(num_agents):
         dtype=torch.float32,
         device=device
     )
-
-    max_cbf, max_action = extract_existing_model_path()
-    last_saved = 0
-
-    if max_cbf is not None:
-        load_model(cbf_net, "cbf_net", max_cbf)
-    if max_action is not None:
-        load_model(action_net, "action_net", max_action)
-
-    last_saved = min(max_cbf or 0, max_action or 0)
-
-    for step in tqdm(range(last_saved, config.TRAIN_STEPS)):
+    
+    for step in tqdm(range(config.TRAIN_STEPS)):
+        # s_np, g_np = generate_data_np(num_agents, config.DIST_MIN_THRES)
+        # s = torch.tensor(s_np, dtype=torch.float32).to(device)
+        # g = torch.tensor(g_np, dtype=torch.float32).to(device)
         s, g = generate_data_torch(num_agents, config.DIST_MIN_THRES, device)
-
+        
+        # Alternate between optimizers every 10 steps
         if (step // 10) % 2 == 0:
             optimizer = optimizer_h
-            network_to_update = "cbf_net"
+            network_to_update = 'cbf_net'
         else:
             optimizer = optimizer_a
-            network_to_update = "action_net"
-
+            network_to_update = 'action_net'
+        
         optimizer.zero_grad()
-
+        
         for _ in range(config.INNER_LOOPS):
+            # For CBF Network
             neighbor_features_cbf, indices = compute_neighbor_features(
                 s, config.DIST_MIN_THRES, config.TOP_K, include_d_norm=True)
             h = cbf_net(neighbor_features_cbf)
-
+            # For Action Network
             neighbor_features_action, _ = compute_neighbor_features(
                 s, config.DIST_MIN_THRES, config.TOP_K, include_d_norm=False, indices=indices)
             a = action_net(s, g, neighbor_features_action)
-
+            
             loss_dang, loss_safe, acc_dang, acc_safe = barrier_loss(
                 h, s, config.DIST_MIN_THRES, config.TIME_TO_COLLISION, indices)
             loss_dang_deriv, loss_safe_deriv, acc_dang_deriv, acc_safe_deriv = derivative_loss(
                 h, s, a, cbf_net, config.ALPHA_CBF, indices)
             loss_action = action_loss(a, s, g, state_gain)
+            loss = 10 * (2*loss_dang + loss_safe + 2*loss_dang_deriv + loss_safe_deriv + 0.01*loss_action)
             
-            loss = 10 * (2 * loss_dang + loss_safe + 2 * loss_dang_deriv + loss_safe_deriv + 0.01 * loss_action)
+            # Scale the loss to average gradients
             loss = loss / config.INNER_LOOPS
             loss.backward()
-
-            if network_to_update == "cbf_net":
+            
+            # Zero out gradients of the network not being updated
+            if network_to_update == 'cbf_net':
                 for param in action_net.parameters():
                     if param.grad is not None:
                         param.grad.detach_()
@@ -114,15 +87,15 @@ def train(num_agents):
                     if param.grad is not None:
                         param.grad.detach_()
                         param.grad.zero_()
-
+            
             with torch.no_grad():
                 s = s + dynamics(s, a) * config.TIME_STEP
-
+        
         optimizer.step()
-
+        
         if step % config.DISPLAY_STEPS == 0:
             print(f"Step: {step}, Loss: {loss.item() * config.INNER_LOOPS}")
-
+        
         if (step + 1) % config.CHECKPOINT_STEPS == 0:
             save_model(cbf_net, "cbf_net", step + 1)
             save_model(action_net, "action_net", step + 1)

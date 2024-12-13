@@ -193,7 +193,10 @@ def plot_single_state_with_original(state, target, safety, original_state, agent
     for side in ax.spines.keys():
         ax.spines[side].set_linewidth(2)
         ax.spines[side].set_color('grey')
-    ax.set_xticklabels([])
-    ax.set_yticklabels([])
+
+    # Enable axis tick labels
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
+
     plt.legend(loc='upper right', fontsize=14)
 
