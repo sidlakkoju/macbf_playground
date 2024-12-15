@@ -19,8 +19,16 @@ from datetime import datetime
 import random
 import math
 
-BASE_DIR = 'smg_testing'
-LOAD_DIR = 'checkpoints_barrier_eval'
+
+# Directory of base model to finetune from
+BASE_MODEL = 'base_macbf'
+finetune_from_base = True
+if finetune_from_base:
+    config.TRAIN_STEPS = 20000
+
+# Directory where model checkpoints should be saved
+SAVE_DIR = 'smg_testing'
+
 
 if torch.cuda.is_available():
     device = torch.device("cuda")
@@ -31,7 +39,12 @@ else:
 print(f"Using device: {device}")
 
 
-def extract_existing_model_path(directory=BASE_DIR):
+
+'''
+UTILITY FUNCTIONS
+'''
+
+def extract_existing_model_path(directory=SAVE_DIR):
     max_cbf = None
     max_action = None
     for filename in os.listdir(directory):
@@ -46,20 +59,26 @@ def extract_existing_model_path(directory=BASE_DIR):
     return max_cbf, max_action
 
 
-def load_model(model, model_name, step, base_dir=BASE_DIR):
-    checkpoint_path = f"{base_dir}/{model_name}_step_{step}.pth"
+def load_model(model, model_name, step, directory=SAVE_DIR):
+    checkpoint_path = f"{directory}/{model_name}_step_{step}.pth"
     if os.path.exists(checkpoint_path):
         print(f"Loading {model_name} from {checkpoint_path}")
         model.load_state_dict(torch.load(checkpoint_path, map_location=device))
     else:
-        print(f"No checkpoint found for {model_name} at step {step}")
+        print(f"No checkpoint found for {model_name} at step {step}.")
+        print(f"Directory: {checkpoint_path}")
 
 
-def save_model(model, model_name, step, base_dir=BASE_DIR):
-    if not os.path.exists(base_dir):
-        os.makedirs(base_dir)
-    torch.save(model.state_dict(), f"{base_dir}/{model_name}_step_{step}.pth")
+def save_model(model, model_name, step, directory=SAVE_DIR):
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    torch.save(model.state_dict(), f"{directory}/{model_name}_step_{step}.pth")
 
+
+
+'''
+MAIN TRAIN LOOP
+'''
 
 def train():
     cbf_net = CBFNetwork().to(device)
@@ -76,19 +95,26 @@ def train():
         device=device
     )
 
-    max_cbf, max_action = extract_existing_model_path()
+    
+    max_cbf, max_action = extract_existing_model_path(directory=SAVE_DIR)
     last_saved = 0
 
-    if max_cbf is not None:
-        load_model(cbf_net, "cbf_net", max_cbf)
-    if max_action is not None:
-        load_model(action_net, "action_net", max_action)
-
-    last_saved = min(max_cbf or 0, max_action or 0)
-
+    # If models have not been saved before, then load finetuned model
+    if max_cbf is None and max_action is None and finetune_from_base:
+        max_cbf, max_action = extract_existing_model_path(directory=BASE_MODEL)
+        if max_cbf is not None:
+            load_model(cbf_net, "cbf_net", max_cbf, directory=BASE_MODEL)
+        if max_action is not None:
+            load_model(action_net, "action_net", max_action, directory=BASE_MODEL)
+    else:
+        print(f"Detected a prior finetune session for SAVE_DIR {SAVE_DIR}. Continuing to train this model.")
+        if max_cbf is not None:
+            load_model(cbf_net, "cbf_net", max_cbf)
+        if max_action is not None:
+            load_model(action_net, "action_net", max_action)
+        last_saved = min(max_cbf or 0, max_action or 0)
+            
     for step in tqdm(range(last_saved, config.TRAIN_STEPS)):
-        # s, g = generate_data_torch(num_agents, config.DIST_MIN_THRES, device)
-
         # Generate SMG environment data and augment
         s_np_ori, g_np_ori, obs_np, obs_g_np, border_points_np, wall_points_np = generate_social_mini_game_data(num_agents=random.randint(1, 4))
         ox = wall_points_np[:, 0].tolist() + border_points_np[:, 0].tolist()
@@ -113,7 +139,6 @@ def train():
         s, g = torch.tensor(s_np, dtype=torch.float32, device=device), torch.tensor(g_np, dtype=torch.float32, device=device)
         obs = torch.tensor(obs_np, dtype=torch.float32, device=device)
         
-
         # Choose Network to backpropgate
         if (step // 10) % 2 == 0:
             optimizer = optimizer_h
@@ -121,12 +146,9 @@ def train():
         else:
             optimizer = optimizer_a
             network_to_update = "action_net"            
-
         optimizer.zero_grad()
 
-
-        for _ in range(config.INNER_LOOPS):
-
+        for _ in range(config.EVALUATE_LENGTH):
             # Identify next waypoint for each agent
             for agent_idx in range(num_agents):
                 agent_pos = s_np[agent_idx, :2]
@@ -163,13 +185,8 @@ def train():
             loss_dang_deriv, loss_safe_deriv, acc_dang_deriv, acc_safe_deriv = derivative_loss(h, s, a, cbf_net, config.ALPHA_CBF, indices, obs)
             loss_action = action_loss(a, s, g, state_gain)
             loss_distance = distance_loss(s, g)
-            
             loss = 10 * (2 * loss_dang + loss_safe + 2 * loss_dang_deriv + loss_safe_deriv + 0.01 * loss_action + 0.1*loss_distance)
             loss = loss / config.INNER_LOOPS
-
-            
-
-            
             loss.backward()
 
             if network_to_update == "cbf_net":
@@ -192,8 +209,8 @@ def train():
             print(f"Step: {step}, Loss: {loss.item() * config.INNER_LOOPS}")
 
         if (step + 1) % config.CHECKPOINT_STEPS == 0:
-            save_model(cbf_net, "cbf_net", step + 1, base_dir=LOAD_DIR)
-            save_model(action_net, "action_net", step + 1, base_dir=LOAD_DIR)
+            save_model(cbf_net, "cbf_net", step + 1, directory=SAVE_DIR)
+            save_model(action_net, "action_net", step + 1, directory=SAVE_DIR)
 
 
 if __name__ == "__main__":
