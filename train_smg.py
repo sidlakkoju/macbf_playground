@@ -181,11 +181,22 @@ def train():
             a = action_net(s, g, neighbor_features_action)
 
             # Loss calculations
-            loss_dang, loss_safe, acc_dang, acc_safe = barrier_loss(h, s, config.DIST_MIN_THRES, config.TIME_TO_COLLISION, indices)
+            loss_dang, loss_safe, acc_dang, acc_safe = barrier_loss(h, s, config.DIST_MIN_THRES, config.TIME_TO_COLLISION, indices, obs)
             loss_dang_deriv, loss_safe_deriv, acc_dang_deriv, acc_safe_deriv = derivative_loss(h, s, a, cbf_net, config.ALPHA_CBF, indices, obs)
             loss_action = action_loss(a, s, g, state_gain)
             loss_distance = distance_loss(s, g)
-            loss = 10 * (2 * loss_dang + loss_safe + 2 * loss_dang_deriv + loss_safe_deriv + 0.01 * loss_action + 0.1*loss_distance)
+            loss_liveness = liveness_loss(s)
+
+            # print(f"loss_dang: {2 * loss_dang}")              # Tensor
+            # print(f"loss_safe: {loss_safe}")                  # Tensor
+            # print(f"loss_dang_deriv: {2 * loss_dang_deriv}")  # int
+            # print(f"loss_safe_deriv: {loss_safe_deriv}")      # Tensor
+            # print(f"loss_action: {0.01 * loss_action}")       # Tensor
+            # print(f"loss_distance: {0.1*loss_distance}")      # Tensor
+            # print(f"loss_liveness: {5*loss_liveness}")          # Tensor
+            # print("")
+
+            loss = 10 * (2 * loss_dang + loss_safe + 2 * loss_dang_deriv + loss_safe_deriv + 0.01 * loss_action + 0.1*loss_distance + 5*loss_liveness)
             loss = loss / config.INNER_LOOPS
             loss.backward()
 

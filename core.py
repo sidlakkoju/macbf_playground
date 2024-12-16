@@ -306,10 +306,8 @@ def dynamics(s, a):
 
 
 def take_step_obstacles(s, a, wall_agents=None):
-    
     s_next = s + dynamics(s, a) * config.TIME_STEP
     # s_next[:, :2] = 0.5*a*config.TIME_STEP**2 + s_next[:, :2]
-
     neighbor_features_next, _ = compute_neighbor_features(
         s_next,
         config.DIST_MIN_THRES,
@@ -442,6 +440,42 @@ def action_loss(a, s, g, state_gain):
     norm_diff = torch.abs(action_net_norm - action_ref_norm)
     loss = torch.mean(norm_diff)
     return loss
+
+
+def liveness_loss(s, liveness_threshold = 0.3):
+    num_agents = s.shape[0]
+    s_diff = s.unsqueeze(1) - s.unsqueeze(0)    # Shape: [num_agents, num_agents, 4]
+    pos_diffs = s_diff[: ,:, :2]                # Shape: [num_agents, num_agents, 2]
+    vel_diffs = -1*s_diff[: ,:, 2:]             # Shape: [num_agents, num_agents, 2]
+
+    pos_diffs_norm = torch.nn.functional.normalize(pos_diffs, dim=-1)
+    vel_diffs_norm = torch.nn.functional.normalize(vel_diffs, dim=-1)
+
+    cos_thetas = torch.sum(pos_diffs_norm * vel_diffs_norm, dim=-1)
+    angles = torch.acos(torch.clamp(cos_thetas, -1.0, 1.0))
+
+    liveness_mask = torch.sigmoid(-100 * (angles - liveness_threshold))  # Steep sigmoid around the threshold
+    
+    # Compute the loss
+    loss = 0
+    total_weight = 0
+    velocities = torch.norm(s[:, 2:], dim=-1)  # Speeds of all agents
+
+    for i in range(num_agents):
+        for j in range(i + 1, num_agents):
+            weight = liveness_mask[i, j]
+            v_i, v_j = velocities[i], velocities[j]
+
+            slower = 0.5 * (v_i + v_j - torch.abs(v_i - v_j))
+            faster = 0.5 * (v_i + v_j + torch.abs(v_i - v_j))
+
+            # Compute loss for the pair
+            pair_loss = torch.abs(slower - 0.5 * faster) + torch.abs(faster - 2.0 * slower)
+            loss += weight * pair_loss
+            total_weight += weight
+    
+    return loss / (total_weight + 1e-8)
+
 
 def distance_loss(s, g):
     xy_dif = g - s[:, :2]
