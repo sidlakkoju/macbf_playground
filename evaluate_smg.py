@@ -66,8 +66,8 @@ def main():
     args = parse_args()
     cbf_net = CBFNetwork().to(device)
     action_net = ActionNetwork().to(device)
-    cbf_net.load_state_dict(torch.load('checkpoints_barrier_eval/cbf_net_step_70000.pth', weights_only=True, map_location=device))
-    action_net.load_state_dict(torch.load('checkpoints_barrier_eval/action_net_step_70000.pth', weights_only=True, map_location=device))
+    cbf_net.load_state_dict(torch.load('smg_trained/cbf_net_step_70000.pth', weights_only=True, map_location=device))
+    action_net.load_state_dict(torch.load('smg_trained/action_net_step_70000.pth', weights_only=True, map_location=device))
     cbf_net.eval()
     action_net.eval()
 
@@ -139,7 +139,7 @@ def main():
             trajectories.append(trajectory)
 
         theta = random.random() * 2 * math.pi
-        theta = math.pi*(0.25)
+        theta = 0
 
         s_np_ori, g_np_ori, obs_np, obs_g_np, border_points_np, wall_points_np, trajectories = rotate_environment(theta, s_np_ori, g_np_ori, obs_np, obs_g_np, border_points_np, wall_points_np, trajectories)
 
