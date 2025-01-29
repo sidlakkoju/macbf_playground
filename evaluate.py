@@ -63,8 +63,8 @@ def main():
     #     torch.load('checkpoints_mps/action_net_step_19000.pth', weights_only=True)
     # )
     
-    cbf_net.load_state_dict(torch.load('checkpoints_barrier_eval/cbf_net_step_70000.pth', weights_only=True, map_location=device))
-    action_net.load_state_dict(torch.load('checkpoints_barrier_eval/action_net_step_70000.pth', weights_only=True, map_location=device))
+    cbf_net.load_state_dict(torch.load('base_macbf/cbf_net_step_70000.pth', weights_only=True, map_location=device))
+    action_net.load_state_dict(torch.load('base_macbf/action_net_step_70000.pth', weights_only=True, map_location=device))
 
     cbf_net.eval()
     action_net.eval()

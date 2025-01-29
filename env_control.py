@@ -12,7 +12,7 @@ import config
     wall_agent_goals,
     border_points,
     wall_points,
-) = generate_social_mini_game_data(0)
+) = generate_social_mini_game_data()
 
 agent_states_torch = torch.tensor(agent_states, dtype=torch.float32, device=device)
 wall_agent_states_torch = torch.tensor(
